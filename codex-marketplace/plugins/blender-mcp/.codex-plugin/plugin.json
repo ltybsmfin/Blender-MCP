@@ -1,0 +1,14 @@
+{
+  "name": "blender-mcp",
+  "version": "0.1.0",
+  "description": "Local Blender tools for editable Geometry Nodes, shape keys, drivers, operation logs and model previews.",
+  "author": { "name": "local" },
+  "license": "Private",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Blender MCP",
+    "shortDescription": "Geometry Nodes, shape keys, drivers and model previews",
+    "developerName": "local",
+    "category": "Developer Tools"
+  }
+}

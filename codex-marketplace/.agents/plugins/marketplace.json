@@ -1,0 +1,12 @@
+{
+  "name": "blender-local",
+  "interface": { "displayName": "Local Blender MCP" },
+  "plugins": [
+    {
+      "name": "blender-mcp",
+      "source": { "source": "local", "path": "./plugins/blender-mcp" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}

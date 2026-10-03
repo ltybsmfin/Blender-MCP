@@ -247,3 +247,11 @@ Codex 样本文件均未改动。
 - 真实模型验证六项全部通过：7→9 花瓣使顶点数 4542→5506；Height 1.10→1.35 使最高 Z 增加 .25 m；Opening .65→.95 改变求值指纹；三项均复位成功。
 - MCP 返回 960×960 原生图片预览，已检查完整造型。最终工程保存至 `Project/models/petal_lamp.blend`，预览在 `Project/previews/petal_lamp.png`；检查点保留便于恢复。模型未烘焙或应用几何节点修改器。
 - 模型当前是造型验证，预览使用 Workbench，未新增发光材质或真实照明。阶段日志 `MCP/.runtime/lamp_*.log` 与操作审计不入库，代码/说明纳入本地 Git。
+
+## 2026-10-03（补做 Codex 本地插件实际安装）
+
+- 用户指出 Blender MCP 未实际出现在 Codex。纠正前次验收口径：独立 MCP 配置登记和 Python SDK 连通，不能证明桌面插件安装或当前聊天原生工具可用。
+- 在 `MCP/codex-marketplace/` 增加本地插件目录、清单和 MCP 启动配置，用官方 `codex plugin marketplace add` 与 `codex plugin add` 安装 `blender-mcp@blender-local`，显示名称 Blender MCP。
+- 安装缓存由 Codex 管理；源文件、Git、文档、运行证据均在 MCP，未在父目录创建文件。备份配置后移除旧同名独立登记，避免覆盖插件提供的服务。
+- Codex app-server `plugin/installed` 确认 installed/enabled 为 true；`mcpServerStatus/list` 确认 pluginId 匹配、初始化成功、toolsError=null、42 个工具。真实响应留在 `.runtime/codex_plugin_*.json`，不入库。
+- 当前已打开聊天尚未验证原生 Blender 工具，桌面刷新/重启后仍需直接调用 health 验收。不再将独立 SDK 成功表述为当前 Codex 会话已接入。未改 Blender 模型或桥行为，因此不重跑建模测试。

@@ -140,11 +140,23 @@ bootstrap 参数（放在 `--` 之后）：`--mcp-host`、`--mcp-port`、`--mcp-
 
 ## 5. 让 Codex 连上
 
-本机已注册名为 **`blender`** 的 Codex MCP 服务。重新加载 MCP 或重启 Codex 后可用。
-下面的配置供重新安装或迁移使用；项目内模板见 `codex-config.toml`。
-Codex 的服务登记保存在其应用配置中，MCP 的源码、Git、文档与日志均在本目录。
+本机已实际安装并启用 **Blender MCP** 本地插件，标识为 `blender-mcp@blender-local`，由它提供 `blender` 服务。
+插件源文件位于 `MCP/codex-marketplace/`，没有放在工作区根目录。安装与验证见 [Codex 插件接入](docs/CODEX_PLUGIN.md)。
+Codex 插件库存已确认 `installed=true`、`enabled=true`；其 app-server 已初始化服务并发现 42 个工具。
+已打开的桌面应用和聊天仍需要重新加载后确认原生工具调用，不能将独立 SDK 连通等同于当前会话接入成功。
 
-**方式一：配置文件（`~/.codex/config.toml`）**
+**推荐：安装本地插件**（与本机相同方式）：
+
+```powershell
+codex plugin marketplace add D:\AI\MCP\Blender\MCP\codex-marketplace
+codex plugin add blender-mcp@blender-local
+```
+
+安装后刷新插件页或重启 Codex，查找 **Blender MCP**。Codex 会在用户配置中登记插件并管理其安装缓存。
+以下独立服务配置仅供不使用插件的迁移场景，项目内模板见 `codex-config.toml`。
+同名独立服务会覆盖插件服务；本机已移除旧的独立登记，避免双重配置。
+
+**替代方式一：独立服务配置文件（`~/.codex/config.toml`）**
 
 ```toml
 [mcp_servers.blender]
@@ -153,7 +165,7 @@ args = ["D:\\AI\\MCP\\Blender\\MCP\\server.py"]
 env = { BLENDER_MCP_BLENDER = "D:\\AI\\MCP\\Blender\\Version\\5_2_1_LTS\\blender.exe", BLENDER_MCP_PORT = "9876", BLENDER_MCP_TIMEOUT = "45" }
 ```
 
-**方式二：CLI 注册**（语法取自本机 `codex mcp add --help`）
+**替代方式二：独立服务 CLI 注册**（语法取自本机 `codex mcp add --help`）
 
 ```powershell
 codex mcp add blender --env "BLENDER_MCP_BLENDER=D:\AI\MCP\Blender\Version\5_2_1_LTS\blender.exe" `
