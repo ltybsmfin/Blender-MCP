@@ -1,5 +1,20 @@
 # Blender MCP 测试报告（本会话实测）
 
+## 参数化椅子与 GUI 显示验收：2026-10-03
+
+使用真实 GUI Blender 5.2.1 LTS、官方 MCP SDK stdio 传输执行全部椅子配方阶段，结果成功。
+图编辑事务批次 21 / 64 / 100 / 33 步均提交成功；节点组 65 节点、144 链接、8 输入，Join 多输入链接最终 10 条。
+座宽 .48→.60 后实际宽度增加 .12 m；座高 .45→.52 后实际最高点增加 .07 m，均复位成功。
+9 项几何断言全部通过，默认包围盒尺寸 `[.48, .501818, .870148]` m。
+
+`blender_present_object` 在实际 GUI 中返回选中、活动对象与 local-view 均正确，完整椅子的取景距离为约 1.361 m，视角持续保留。
+MCP 内 Windows 前台请求如实回报未获允许；不把窗口激活请求等同于激活成功。后续依用户“不要置前”要求全部使用 `foreground=false`。
+该显示工具的单元保护 3/3 通过，原单元套件 58/58 通过；这次未重复运行此前完整 371 项基线。
+
+实际渲染返回 960×720 原生图片内容，已检查模型完整入镜。工程首次保存成功、文件 794,766 字节。
+证据：`MCP/.runtime/chair_inspect.log`、`chair_seat.log`、`chair_legs.log`、`chair_back.log`、`chair_verify.log`、`chair_save.log`。
+工程与图像分别位于 `Project/chairs/parametric_chair.blend`、`Project/previews/parametric_chair.png`。
+
 ## 最终完整验收：2026-10-03（Asia/Shanghai）
 
 Codex 在本机正常账户环境完成全部测试，使用实际安装的 **Blender 5.2.1 LTS** 与官方 Python MCP SDK 的 stdio 客户端。

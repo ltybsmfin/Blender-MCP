@@ -9,7 +9,7 @@
 **用户操作约定：不使用 computer-use / 桌面自动化控制或验收 Blender。** 建模、查询和模型预览通过 MCP 与 Blender API 完成；截图由 `blender_capture_preview` 生成，不需要截取桌面。
 
 - MCP 服务端：官方 Python MCP SDK **1.30.0**（已固定版本）+ FastMCP stdio，**42 个工具**。
-- `blender_present_object`：在 GUI 视口选择、隔离并框选对象，保留视角；可请求激活当前 Blender 自身窗口，不模拟鼠标/键盘。前台激活受 Windows 限制，响应如实报告是否成功。此新增能力的实际 GUI 验收待重启后的椅子建模完成；参数与无视口保护已验证。
+- `blender_present_object`：在 GUI 视口选择、隔离并框选对象，保留视角；可请求激活当前 Blender 自身窗口，不模拟鼠标/键盘。GUI 选择、隔离、取景已在本机 5.2.1 验证。前台激活受 Windows 限制，响应如实报告是否成功。用户当前要求 Blender 在后台运行，后续调用保持 `foreground=false`，除非用户再次明确请求置前。
 - Blender 侧：单文件插件/桥接脚本，**只用 Blender 自带标准库 + `bpy`**，不需要在 Blender 里安装 `mcp`。
 - 传输：`127.0.0.1:9876` 上的 IPv4 TCP，逐行 JSON（`\n` 分帧），令牌写在 `MCP/.runtime/token`（两侧读取，**永不打印**）。
 - **没有任意 Python 执行工具**：所有能力都是具名工具；唯一的表达式通道是 Blender 驱动器表达式，且会被解析（`ast.parse`）后按白名单校验，绝不 `eval`/`exec`。
@@ -18,6 +18,8 @@
 - **截图**：`blender_capture_preview` 把渲染出的 PNG 作为 MCP image 内容返回，AI 能直接“看到”模型。
 - 版本基线：Git 提交 **`18c300e`**（Codex 建立）。工作区根目录 `README.md` / `.gitignore` 已获用户授权删除，
   历史副本保存在 `MCP/docs/history/`；本仓库（`MCP/`）内的日志与测试报告、`Project/` 内的模型输出分开放置。
+
+已通过 MCP 制作并保存参数化椅子：`Project/chairs/parametric_chair.blend`，节点组 `GN_Parametric_Chair`，8 个尺寸/角度输入保持可编辑。使用与实测记录见 [参数化椅子说明](docs/PARAMETRIC_CHAIR.md)。
 
 ---
 

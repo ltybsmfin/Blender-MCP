@@ -225,3 +225,14 @@ Codex 样本文件均未改动。
 - 原单元套件 58 项通过；新增 `tests/test_presentation.py` 验证无效视角、非法标志、无视口时不会激活窗口的三条保护。
 - 参数化木椅任务保留：尚未开始模型写入。已委派生成仅通过具名 MCP 工具调用的分阶段配方，范围为 `examples/parametric_chair.py` 与 `docs/PARAMETRIC_CHAIR.md`；配方未运行、未验收，重启后先评审再执行。
 - 本次尝试的 9877 GUI 进程在桥启动后即退出（退出码 0），未创建模型。没有将 Codex 指向这个临时端口，重启后需要启动并确认实际 GUI Blender 桥，再建模、验收前台显示和保存。
+
+## 2026-10-03（参数化椅子实际完成）
+
+- 重启后使用独立配置目录、`--factory-startup` 和 bootstrap 脚本启动实际 GUI Blender 5.2.1，桥连接保持 9876；官方 SDK 读取 health 确认 `background=false` 与当前进程 PID。
+- 评审并实际执行委派的 MCP 配方：inspect → seat → legs → back → finish → verify → save。所有模型写入均为具名 MCP 调用，4 个图编辑事务批次（21、64、100、33 步）全部提交成功；多输入 Join 链接由 1→5→10，未丢失部件。
+- 完成单对象几何节点椅子：65 节点、144 链接，座面、4 椅腿、2 根后倾靠背柱、3 根横档；8 个尺寸/角度参数可编辑，未应用修改器。默认尺寸与算式见 `docs/PARAMETRIC_CHAIR.md`。
+- 9 项真实几何验证全部通过：座宽由 .48 改为 .60，宽度增加 .12；座高由 .45 改为 .52，模型顶部增加 .07；参数均已复位，包围盒与预测吻合、椅脚最低 Z 为 0。
+- MCP 返回 960×720 原生 PNG 模型预览；已检查图像，椅子完整入镜。保存 `Project/chairs/parametric_chair.blend`，794,766 字节、首次保存不覆盖；预览在 `Project/previews/parametric_chair.png`。
+- 实际 GUI `blender_present_object` 成功选择、隔离、框选椅子并保留修改器面板。最初依用户要求请求置前，Windows 拒绝 Blender 自身请求后，经限定本进程窗口的宿主窗口 API 激活成功；没有模拟键鼠或使用 computer-use。
+- 用户随后说明正在打游戏、不要置前。立即停止前台激活；后续显示调用均 `foreground=false`，保持后台建模和保存。README 已记录当前偏好。
+- 配方与说明由 Codex 集成并纳入本地 Git；DSH 完成会话已归入 MCP 工作区。审计与阶段输出保存在 `MCP/.runtime`，不入库。
