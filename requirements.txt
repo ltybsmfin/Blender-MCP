@@ -1,0 +1,8 @@
+# Blender MCP server requirements (official Python MCP SDK, 1.x line).
+#
+# v2 of the SDK renames FastMCP, so the major version is pinned deliberately.
+# Installed and verified in MCP/.venv: mcp 1.30.0 (Python 3.12.7).
+#
+# The Blender side (MCP/blender/*.py) needs NO third-party package at all - it
+# uses only the standard library bundled with Blender plus `bpy`.
+mcp==1.30.0

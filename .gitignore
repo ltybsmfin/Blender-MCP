@@ -1,0 +1,17 @@
+# This directory is the Blender MCP git root (MCP/.git).
+# Version/ (Blender distribution) and Project/ (Blender projects and outputs) are
+# sibling directories and are NOT part of this repository.
+
+# Self-contained virtual environment (recreate with `python -m venv .venv`)
+.venv/
+
+# Runtime state: bridge token, logs, launch logs, headless pump logs, test temp files
+.runtime/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Generated test artefacts (the human-readable report is tracked)
+tests/reports/*.json
