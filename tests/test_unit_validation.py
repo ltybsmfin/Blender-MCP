@@ -286,6 +286,10 @@ class JsonAndSocketTests(unittest.TestCase):
         self.assertTrue(addon._socket_types_compatible(Sock("GEOMETRY"), Sock("GEOMETRY")))
         self.assertTrue(addon._socket_types_compatible(Sock("FLOAT"), Sock("VECTOR")))
         self.assertTrue(addon._socket_types_compatible(Sock("INT"), Sock("FLOAT")))
+        self.assertTrue(addon._socket_types_compatible(Sock("INT"), Sock("VALUE")))
+        self.assertTrue(addon._socket_types_compatible(Sock("VALUE"), Sock("VECTOR")))
+        self.assertFalse(addon._socket_types_compatible(Sock("GEOMETRY"), Sock("VALUE")))
+        self.assertFalse(addon._socket_types_compatible(Sock("STRING"), Sock("VALUE")))
         self.assertFalse(addon._socket_types_compatible(Sock("GEOMETRY"), Sock("FLOAT")))
         self.assertFalse(addon._socket_types_compatible(Sock("STRING"), Sock("FLOAT")))
 

@@ -1,5 +1,16 @@
 # Blender MCP 测试报告（本会话实测）
 
+## 花瓣灯与数值插槽兼容：2026-10-03
+
+真实 GUI Blender 5.2.1、官方 MCP SDK 完成花瓣灯创建、平滑着色、节点排列、预览与保存。
+初次花瓣批次因 INT→VALUE 被拒绝而回滚，原灯杆完整；补齐数值插槽类型 VALUE 后重试成功。
+原 58 项单元套件通过，包含新增 INT→VALUE、VALUE→VECTOR 转换及 Geometry/String→VALUE 拒绝断言。
+
+真实模型六项检查通过：花瓣数量 7→9（顶点 4542→5506），高度 1.10→1.35（max Z 增加 .25），
+展开角 .65→.95（求值指纹改变），以及各参数恢复原值。模型预览为 960×960 PNG，已检查造型完整入镜。
+证据：`MCP/.runtime/lamp_stem.log`、`lamp_flower.log`（第一次失败）、`lamp_flower_fixed.log`、
+`lamp_unit.log`、`lamp_verify.log`、`lamp_save.log`。此增量未重复整套 371 项历史基线。
+
 ## 参数化椅子与 GUI 显示验收：2026-10-03
 
 使用真实 GUI Blender 5.2.1 LTS、官方 MCP SDK stdio 传输执行全部椅子配方阶段，结果成功。

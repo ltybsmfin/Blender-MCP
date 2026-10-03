@@ -236,3 +236,14 @@ Codex 样本文件均未改动。
 - 实际 GUI `blender_present_object` 成功选择、隔离、框选椅子并保留修改器面板。最初依用户要求请求置前，Windows 拒绝 Blender 自身请求后，经限定本进程窗口的宿主窗口 API 激活成功；没有模拟键鼠或使用 computer-use。
 - 用户随后说明正在打游戏、不要置前。立即停止前台激活；后续显示调用均 `foreground=false`，保持后台建模和保存。README 已记录当前偏好。
 - 配方与说明由 Codex 集成并纳入本地 Git；DSH 完成会话已归入 MCP 工作区。审计与阶段输出保存在 `MCP/.runtime`，不入库。
+
+## 2026-10-03（花瓣灯创意模型与数值插槽修复）
+
+- 用户已结束游戏并明确请求将 Blender 置前。通过限定当前 Blender 进程的 Windows API 请求激活窗口；建模全程通过官方 MCP SDK 具名工具，不使用 computer-use。
+- 自主设计花瓣灯：扁椭球底座、弯曲 Bézier 灯杆、径向椭球花瓣和中心球形灯泡；六个几何节点参数为 Height、Stem Bend、Petal Count、Petal Length、Opening、Base Radius。原椅子保留。
+- 委派仅写 `examples/petal_lamp.py` 与 `docs/PETAL_LAMP.md` 的客户端配方。Codex 评审并实际执行，补上平滑着色、节点依赖布局与展开角的直观映射（X 倾角 = pi/2 - Opening）。
+- 花瓣初次事务因 INT→VALUE 被桥拒绝而整体回滚。实际 Blender 浮点插槽类型是 VALUE，既有数值集合遗漏此类型；补入 VALUE，并新增 INT→VALUE、VALUE→VECTOR 及非数值拒绝断言。58 项单元测试全部通过。
+- 通过 MCP 保存完整工作检查点 `Project/models/petal_lamp_working.blend`，仅重启本任务启动的 Blender 实例，加载修正后的桥并恢复工程。后续花瓣编辑成功，Join 多输入最终 4 条，没有丢失底座、杆或椅子。
+- 真实模型验证六项全部通过：7→9 花瓣使顶点数 4542→5506；Height 1.10→1.35 使最高 Z 增加 .25 m；Opening .65→.95 改变求值指纹；三项均复位成功。
+- MCP 返回 960×960 原生图片预览，已检查完整造型。最终工程保存至 `Project/models/petal_lamp.blend`，预览在 `Project/previews/petal_lamp.png`；检查点保留便于恢复。模型未烘焙或应用几何节点修改器。
+- 模型当前是造型验证，预览使用 Workbench，未新增发光材质或真实照明。阶段日志 `MCP/.runtime/lamp_*.log` 与操作审计不入库，代码/说明纳入本地 Git。

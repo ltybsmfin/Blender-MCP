@@ -79,7 +79,9 @@ LINGER_MAX_BYTES = 64 * 1024
 LINGER_MAX_POLLS = 5
 
 # Numeric socket types that Blender converts implicitly when linking.
-_NUMERIC_SOCKET_TYPES = {"FLOAT", "INT", "VECTOR", "COLOR", "ROTATION", "BOOLEAN"}
+# Actual NodeSocketFloat.type is VALUE in this Blender build. FLOAT is retained
+# for callers/probes that report the RNA scalar category instead.
+_NUMERIC_SOCKET_TYPES = {"FLOAT", "VALUE", "INT", "VECTOR", "COLOR", "ROTATION", "BOOLEAN"}
 _SOCKET_COMPATIBLE = {
     ("GEOMETRY", "GEOMETRY"),
     ("STRING", "STRING"),

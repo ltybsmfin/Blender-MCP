@@ -21,6 +21,8 @@
 
 已通过 MCP 制作并保存参数化椅子：`Project/chairs/parametric_chair.blend`，节点组 `GN_Parametric_Chair`，8 个尺寸/角度输入保持可编辑。使用与实测记录见 [参数化椅子说明](docs/PARAMETRIC_CHAIR.md)。
 
+创意示例花瓣灯：`Project/models/petal_lamp.blend`，六个参数控制弯曲灯杆、底座和实例化花瓣；实测与用法见 [花瓣灯说明](docs/PETAL_LAMP.md)。
+
 ---
 
 ## 1. 目录结构
