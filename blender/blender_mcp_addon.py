@@ -4411,6 +4411,84 @@ def _find_view3d_context():
     return None
 
 
+def _request_own_window_foreground():
+    """Request activation of an own-process window, never synthesize input."""
+    if os.name != "nt":
+        return {"requested": True, "activated": False, "reason": "foreground activation is supported on Windows only"}
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    candidates = []
+    @callback_type
+    def visit(hwnd, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == os.getpid() and user32.IsWindowVisible(hwnd):
+            candidates.append(hwnd)
+        return True
+    user32.EnumWindows(visit, 0)
+    if not candidates:
+        return {"requested": True, "activated": False, "reason": "no visible window owned by this Blender process"}
+    hwnd = candidates[0]
+    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+    activated = user32.GetForegroundWindow() == hwnd
+    return {"requested": True, "activated": activated, "pid": os.getpid(),
+            "reason": None if activated else "Windows declined foreground activation; select the Blender taskbar window"}
+
+
+@command("present_object", summary="select and frame an object in the GUI, optionally requesting own-window foreground")
+def _cmd_present_object(object: str, view: str = "isometric", isolate: bool = True, foreground: bool = False):
+    if view not in ("current",) + tuple(PREVIEW_VIEW_DIRECTIONS):
+        raise CommandError("invalid_view", "unknown viewport direction", details={"view": view})
+    if not isinstance(isolate, bool) or not isinstance(foreground, bool):
+        raise CommandError("invalid_argument", "isolate and foreground must be booleans")
+    obj = get_object(object)
+    context = _find_view3d_context()
+    if context is None:
+        raise CommandError("viewport_unavailable", "present_object requires a GUI Blender 3D viewport")
+    window, screen, area, region = context
+    layer = window.view_layer
+    if obj.name not in layer.objects:
+        raise CommandError("object_not_in_view_layer", "object is outside the displayed view layer")
+    space = area.spaces.active
+    with bpy.context.temp_override(window=window, screen=screen, area=area, region=region):
+        if bpy.context.mode != "OBJECT":
+            raise CommandError("object_mode_required", "leave edit/pose mode before presenting an object")
+        if space.local_view is not None:
+            bpy.ops.view3d.localview(frame_selected=False)
+        obj.hide_set(False, view_layer=layer)
+        obj.hide_viewport = False
+        for other in layer.objects:
+            if other.select_get(view_layer=layer):
+                other.select_set(False, view_layer=layer)
+        obj.select_set(True, view_layer=layer)
+        layer.objects.active = obj
+        if isolate:
+            bpy.ops.view3d.localview(frame_selected=False)
+        if view != "current":
+            space.region_3d.view_rotation = _preset_view_quaternion(PREVIEW_VIEW_DIRECTIONS[view])
+            space.region_3d.view_perspective = "ORTHO"
+        bpy.ops.view3d.view_selected(use_all_regions=False)
+        for panel in screen.areas:
+            if panel.type == "PROPERTIES":
+                panel.spaces.active.context = "MODIFIER"
+        area.tag_redraw()
+    activation = _request_own_window_foreground() if foreground else {"requested": False, "activated": False}
+    return {"object": obj.name, "selected": obj.select_get(view_layer=layer),
+            "active": layer.objects.active.name, "local_view": space.local_view is not None,
+            "view": view, "view_distance": float(space.region_3d.view_distance),
+            "view_location": list(space.region_3d.view_location), "foreground": activation,
+            "persistent": True, "note": "selection and view intentionally persist; geometry is unchanged"}
+
+
 def _capture_viewport(objects, target, width, height, view, transparent, timeout_s):
     """Capture the real 3D viewport; requires a GUI Blender."""
     context = _find_view3d_context()

@@ -216,3 +216,12 @@ Codex 样本文件均未改动。
 - 在独立 GUI Blender 中通过真实 MCP 调用验证 960×720 视口截图与相机渲染，均返回原生 `ImageContent`；截图前后选择状态、活动对象、视角、帧、渲染设置、相机与数据块数量全部一致。样本保存在 `Project/previews/`，证据在 `MCP/.runtime/host_*`，均不入库。
 - 只读实时看板通过 API 确认运行，读取 `MCP/.runtime/logs`；工具累计 **41 个**。模型截图不自动保存 .blend。
 - 用户明确要求**不要 computer-use**。后续 Blender 操作、检查和模型预览只通过 MCP / Blender API 完成，该偏好已写入 README 与架构文档。
+
+## 2026-10-03（Codex 注册复核与椅子任务检查点）
+
+- 用户要求先将 MCP 接入 Codex，随后自行重启。通过 `codex mcp add blender` 注册并核验 `enabled=true`；解释器与 server.py 均位于 `MCP`，Blender 路径为 `Version/5_2_1_LTS/blender.exe`，桥端口保持 9876。
+- 官方 SDK 实际初始化服务并列出 **42 个工具**，包含批量编辑、预览、日志看板与新增 `blender_present_object`。
+- 新增显示对象工具通过 Blender API 保留选择与取景，可调用 Windows API 请求激活当前 Blender 进程的自身窗口；不使用 computer-use 或模拟输入。该功能不修改几何，GUI 成功路径待实际验收。
+- 原单元套件 58 项通过；新增 `tests/test_presentation.py` 验证无效视角、非法标志、无视口时不会激活窗口的三条保护。
+- 参数化木椅任务保留：尚未开始模型写入。已委派生成仅通过具名 MCP 工具调用的分阶段配方，范围为 `examples/parametric_chair.py` 与 `docs/PARAMETRIC_CHAIR.md`；配方未运行、未验收，重启后先评审再执行。
+- 本次尝试的 9877 GUI 进程在桥启动后即退出（退出码 0），未创建模型。没有将 Codex 指向这个临时端口，重启后需要启动并确认实际 GUI Blender 桥，再建模、验收前台显示和保存。

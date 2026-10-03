@@ -14,6 +14,18 @@ from ._common import call
 
 def register(mcp: FastMCP, bridge: BridgeClient) -> None:
     @mcp.tool(
+        name="blender_present_object",
+        description="Select and frame an object in the GUI 3D viewport, optionally isolate it in local view and request foreground activation of THIS Blender window. Unlike capture_preview this intentionally keeps the new view and selection; no geometry is changed. No desktop input automation.",
+    )
+    def blender_present_object(
+        object: str,
+        view: Literal["current", "isometric", "front", "back", "right", "top"] = "isometric",
+        isolate: bool = True,
+        foreground: bool = False,
+    ) -> dict:
+        return call(bridge, "present_object", {"object": object, "view": view, "isolate": isolate, "foreground": foreground})
+
+    @mcp.tool(
         name="blender_scene_summary",
         description=(
             "Overview of the loaded scene: frame range, collections, materials, node groups (with node "
