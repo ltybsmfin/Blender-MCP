@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 
-from . import __version__, config
+from . import __version__, audit, config
 from .bridge import BridgeClient
 from .tools import build_server
 
@@ -26,6 +26,7 @@ def configure_logging() -> None:
 def main() -> int:
     configure_logging()
     config.RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    log = audit.get_audit()
     token = config.ensure_token()
     LOG.info(
         "starting blender-mcp %s | python=%s | bridge=%s | workspace=%s | token_file=%s (present=%s)",
@@ -36,14 +37,26 @@ def main() -> int:
         config.token_path(),
         bool(token),
     )
+    log.record(
+        "session_start",
+        tool=None,
+        version=__version__,
+        python=sys.executable,
+        bridge=config.bridge_address(),
+        workspace=str(config.WORKSPACE_ROOT),
+        audit=log.describe(),
+    )
     bridge = BridgeClient()
     mcp = build_server(bridge, name="blender")
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:  # pragma: no cover - interactive Ctrl-C
         LOG.info("interrupted; closing bridge connection")
+        log.record("session_stop", reason="interrupted")
         bridge.close()
         return 130
     finally:
+        log.record("session_stop", reason="eof")
+        log.close()
         bridge.close()
     return 0

@@ -1,14 +1,22 @@
-# Blender MCP（Codex 用）— 几何节点 / 形态键 / 驱动器
+# Blender MCP（Codex 用）— 几何节点 / 形态键 / 驱动器 / 审计日志 / 截图预览
 
 > 架构约定见 `docs/ARCHITECTURE.md`，实测证据见 `tests/reports/TEST_REPORT.md`，开发日志见 `docs/DEVELOPMENT_LOG.md`。
 
 在 **已运行的 Blender** 与 **Codex（MCP stdio 客户端）** 之间架一座本地、带令牌鉴权的桥。
-第一版聚焦三件事：**几何节点参数化建模**、**形态键（Shape Keys）**、**驱动器（Drivers）**。
+主线是**几何节点参数化建模**、**形态键（Shape Keys）**、**驱动器（Drivers）**；
+本版新增**每次操作的持久审计日志 + 实时看板**、**事务化批量图编辑**与**模型截图预览**。
 
-- MCP 服务端：官方 Python MCP SDK **1.30.0**（已固定版本）+ FastMCP stdio，**38 个工具**。
+**用户操作约定：不使用 computer-use / 桌面自动化控制或验收 Blender。** 建模、查询和模型预览通过 MCP 与 Blender API 完成；截图由 `blender_capture_preview` 生成，不需要截取桌面。
+
+- MCP 服务端：官方 Python MCP SDK **1.30.0**（已固定版本）+ FastMCP stdio，**41 个工具**。
 - Blender 侧：单文件插件/桥接脚本，**只用 Blender 自带标准库 + `bpy`**，不需要在 Blender 里安装 `mcp`。
 - 传输：`127.0.0.1:9876` 上的 IPv4 TCP，逐行 JSON（`\n` 分帧），令牌写在 `MCP/.runtime/token`（两侧读取，**永不打印**）。
 - **没有任意 Python 执行工具**：所有能力都是具名工具；唯一的表达式通道是 Blender 驱动器表达式，且会被解析（`ast.parse`）后按白名单校验，绝不 `eval`/`exec`。
+- **审计**：每次工具调用与每条桥命令都写入 `MCP/.runtime/logs/audit-*.jsonl`（参数已脱敏、结果有界、含耗时与错误），
+  可用 `blender_operation_log` 读取或 `blender_log_dashboard` / `launch_log_viewer.ps1` 打开实时看板（只读、仅回环）。
+- **截图**：`blender_capture_preview` 把渲染出的 PNG 作为 MCP image 内容返回，AI 能直接“看到”模型。
+- 版本基线：Git 提交 **`18c300e`**（Codex 建立）。工作区根目录 `README.md` / `.gitignore` 已获用户授权删除，
+  历史副本保存在 `MCP/docs/history/`；本仓库（`MCP/`）内的日志与测试报告、`Project/` 内的模型输出分开放置。
 
 ---
 
@@ -19,24 +27,32 @@
 ├─ server.py                     MCP stdio 入口（Codex 启动的就是它）
 ├─ requirements.txt              依赖（mcp==1.30.0）
 ├─ launch_blender.ps1            Windows 启动助手（默认 GUI）
+├─ launch_log_viewer.ps1         启动日志看板（隐藏进程，可选打开浏览器）
 ├─ blender_mcp\                  MCP 服务端包
 │  ├─ app.py config.py bridge.py models.py
-│  └─ tools\  meta.py scene.py geometry_nodes.py shape_keys.py drivers.py launcher.py
+│  ├─ audit.py                   JSONL 审计日志（脱敏、限长、轮转、读取）
+│  ├─ log_viewer.py              本地只读看板（stdlib HTTP，仅回环）
+│  └─ tools\  meta.py scene.py geometry_nodes.py shape_keys.py drivers.py
+│             launcher.py preview.py operation_log.py
 ├─ blender\
-│  ├─ blender_mcp_addon.py       Blender 侧全部逻辑（非阻塞 socket + 命令实现 + 面板）
+│  ├─ blender_mcp_addon.py       Blender 侧全部逻辑（非阻塞 socket + 命令实现 + 面板 + 审计）
 │  └─ bootstrap.py               在 Blender 内启动桥（控制台 / --python / 无头 pump）
 ├─ tests\
-│  ├─ test_unit_validation.py    纯 Python 单元/协议测试（56 项）
+│  ├─ test_unit_validation.py    纯 Python 单元/协议测试（58 项）
 │  ├─ test_review_transport.py   连接期限、配置与启动参数回归（7 项）
-│  ├─ blender_integration.py     真实 Blender 集成测试（48 项，产出 demo .blend）
+│  ├─ test_audit_features.py     审计日志 / 看板 / 工具 schema 单元测试（30 项）
+│  ├─ blender_integration.py     真实 Blender 集成测试（49 项，产出 demo .blend）
 │  ├─ blender_review_regressions.py  引用、恢复与轮询回归（41 项）
-│  ├─ test_mcp_stdio.py          真实 MCP stdio 客户端端到端测试（78 项）
+│  ├─ blender_feature_integration.py 事务编辑 / 截图 / 审计（真实 Blender，64 项）
+│  ├─ test_mcp_stdio.py          真实 MCP stdio 客户端端到端测试（85 项）
+│  ├─ test_mcp_stdio_features.py 新工具的真实 MCP stdio 测试（37 项）
 │  ├─ stdio_pipe_transport.py    stdio 客户端传输（见 §9 已知环境限制）
 │  ├─ probes\                    Blender 5.2 API 探针（实现依据，可复现）
 │  └─ reports\                   测试报告（JSON + TEST_REPORT.md）
 ├─ .venv\                        自包含虚拟环境（含 mcp）
-└─ .runtime\                     token / 日志 / 测试临时文件（不入库）
+└─ .runtime\                     token / 审计日志 / 测试临时文件（不入库）
 <workspace>\Project\demo\parametric_demo.blend    集成测试产出的可编辑演示文件
+<workspace>\Project\previews\*.png                截图预览输出目录（只允许写这里）
 ```
 
 ---
@@ -46,7 +62,7 @@
 | 项 | 值 |
 | --- | --- |
 | Python（MCP 服务端） | 3.10+，实测 3.12.7（`D:\SoftWare\anaconda\python.exe`） |
-| 依赖 | `mcp>=1.26,<2`（唯一第三方依赖） |
+| 依赖 | `mcp==1.30.0`（唯一第三方依赖） |
 | Blender | 实测 **5.2.1 LTS**，路径 `D:\AI\MCP\Blender\Version\5_2_1_LTS\blender.exe`（脚本会自动发现 `Version\*\blender.exe`） |
 | 平台 | Windows（桥本身是跨平台的；启动助手是 PowerShell） |
 
@@ -152,7 +168,7 @@ D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\server.py
 
 ---
 
-## 6. 工具清单（38 个）
+## 6. 工具清单（41 个）
 
 所有错误都是 **MCP 错误（`isError=true`）**，附带机器可读的 `code`，不会用"成功值里带 error"的方式蒙混。
 
@@ -190,6 +206,22 @@ owner 支持 `object` / `shape_keys` / `node_group` / `scene`；变量仅支持 
 ### 6.6 启动（1）
 `blender_launch_blender`（默认 GUI；`background=true` 无头；已有健康桥则直接复用，不启动新进程；子进程输出写日志文件，绝不混入 MCP stdout）。
 
+### 6.7 截图预览（1，本版新增）
+| 工具 | 说明 |
+| --- | --- |
+| `blender_capture_preview` | 渲染当前模型并把**图片本身**作为 MCP image 内容返回（`image/png`），同时给出元数据：真实落盘路径、实际使用的模式、像素尺寸、字节数、诊断信息 |
+
+- `mode`：`auto`（有 GUI 视口就用视口，否则相机渲染，并回报**实际**模式）/ `viewport`（强制视口，无 GUI 时给可执行的报错）/ `render`（始终相机渲染）。
+- `view`：`current` / `isometric` / `front` / `top` / `back` / `right`；自动按**求值后**（几何节点输出）的包围盒取景。
+- 尺寸上限 2048，PNG 上限 3 MiB，默认超时 45 秒；只允许写 `<workspace>\Project\previews\*.png`。
+- 渲染设置、场景相机、帧、临时数据块在**失败时也会恢复**；绝不自动保存 .blend。
+
+### 6.8 审计与日志看板（2，本版新增）
+| 工具 | 说明 |
+| --- | --- |
+| `blender_operation_log` | 读取持久审计日志：每次工具调用的参数（已脱敏）、结果、错误、耗时，批量编辑的**逐步结果**与事务结论；支持 `status` / `source` / `query` 过滤 |
+| `blender_log_dashboard` | 启动 / 查询 / 停止本地日志看板，返回实时 URL（`action=start\|status\|stop`）；默认**不**打开浏览器 |
+
 ---
 
 ## 7. 关键语义（务必先读）
@@ -198,8 +230,11 @@ owner 支持 `object` / `shape_keys` / `node_group` / `scene`；变量仅支持 
    用 `blender_inspect_node_group` / `blender_describe_node_type` 拿 identifier 再连。
    例：`GeometryNodeTransform` 在 5.2 里的默认节点名是 **"Transform Geometry"**，不要假设。
 2. **保持过程化**：新增 GN 修改器是叠加的，不会烘焙/删除已有修改器与参数。
-3. **批量编辑不是事务**：`blender_batch_graph_edit` 顺序执行并逐条报告；失败时 `completed` 里的是**已经生效**的，
-   工具**不声称回滚**（响应里 `rollback: false` 明说）。
+3. **批量编辑默认是事务**：`blender_batch_graph_edit` 默认 `transactional=true` —— 全部操作先在**隔离的节点组副本**
+   上执行，只有全部成功才一次性替换原节点组并重定向所有使用者；任何一步失败都**整体回滚**（原节点组、链接、默认值、
+   接口、修改器参数、嵌套引用与驱动器目标保持原样），工具以**错误**（`graph_edit_rolled_back`）返回。
+   `transactional=false` 才是旧的「顺序执行、逐个报告、不回滚」模式（响应里 `rollback: false`），
+   `continue_on_error=true` 只能与 `transactional=false` 一起用（否则在读参数阶段就被拒绝，不做任何改动）。
 4. **形态键要求原始网格拓扑**：一个 key 每个顶点一份坐标，顶点数必须等于网格顶点数。
    - 没有 key 时本工具会**先建立 `Basis`** 再建目标 key（Blender 会把第一个 key 直接当作基准，所以必须显式建 Basis）；
    - `Basis` 默认**写保护**（`allow_basis=true` 才放行）；
@@ -292,13 +327,20 @@ Codex ──stdio(JSON-RPC/MCP)──> MCP/server.py ──TCP 127.0.0.1:9876(�
   命令在 Blender **主线程**执行 —— 没有后台线程碰 `bpy`。
 - **不回放**：超时/断连只报错，绝不自动重发（尤其不改动属性的命令）。
 - **不做任意代码执行**：桥命令是固定清单；驱动器表达式是唯一表达式通道，且先解析再校验。
+- **审计旁路**：MCP 侧在 `call_tool` 入口记录每次调用（含 SDK 参数校验失败），并把请求号通过保留参数
+  `_mcp_audit` 传给 Blender；Blender 的 `dispatch` 在校验参数**之前**摘掉该字段，并记录每条命令的开始/结束。
+  两侧各写各的 JSONL 文件（每进程一个），看板只读聚合，因此不需要跨进程锁。
 - 命令与工具一一对应，`blender_list_commands` 可列出底层命令名。
 
 ---
 
-## 10. 已知限制（第一版范围内的诚实说明）
+## 10. 已知限制
 
-1. `blender_batch_graph_edit` **没有事务/回滚**：部分失败时按 `completed` 继续修。
+1. `blender_batch_graph_edit` 默认是**节点组级事务**：成功时**替换节点组数据块身份**（名称与接口 identifier 不变），
+   通过 Blender 原生 `ID.user_remap()` 重定向使用者，并恢复修改器输入值。
+   这不是 Blend 文件级撤销：Blender 自身的撤销栈、以及**在 bpy 之外**缓存了旧数据块的对象不会被改写；
+   链接库（library）节点组会被直接拒绝（`unsafe_linked_group`）。测试同时覆盖旧的非事务模式。
+   未被本次编辑显式修改的修改器输入值、驱动器目标、嵌套引用和接口会保留。
 2. `blender_update_driver` 若新表达式语义无效，会**自动恢复原表达式与变量**并报 `invalid_expression`
    （实测恢复成功、`is_valid=True`）；`blender_add_driver` 新建后若 Blender 判定无效则**撤销本次新建**并报错。
 3. 形态键只作用于对象**原始网格**；生成几何的修改器会盖掉它（见 §7.4）。
@@ -309,6 +351,14 @@ Codex ──stdio(JSON-RPC/MCP)──> MCP/server.py ──TCP 127.0.0.1:9876(�
    保存时会临时关闭"预览图"和"版本备份"，因此**不会**在项目目录里额外产生 `.blend1`。
 7. 同一时刻 Blender 只服务一个 socket 循环；一个耗时命令执行期间新请求要排队（单线程，无并发执行）。
 8. 形态键坐标载荷**先整体校验再写入**（中间项非法时不会留下部分写入）；驱动器表达式在写入前被解析校验。
+9. 截图预览在 `--background` 下**没有 OpenGL 视口**，`mode=viewport` 会返回可执行的 `viewport_unavailable` 错误；
+   GUI 视口截图与相机渲染已在本机 5.2.1 LTS 上通过真实 MCP 调用验证；`mode=auto` 在没有视口时使用相机渲染。
+   首次渲染可能要初始化 GPU 管线（本机实测首帧约 20 秒，之后同进程内 &lt;1 秒），超时预算默认 45 秒。
+10. 日志看板是**只读**的：只有 `GET /`、`/api/health`、`/api/events`、`/api/stream`，没有写接口、没有任意文件访问、
+    页面不含 token，也不会显示图片 base64（图片只记录字节数与哈希）。看板随启动它的进程退出而结束；
+    需要长驻请用 `MCP\launch_log_viewer.ps1`。
+11. 审计日志按**每进程一个文件**写入（`audit-<source>-<pid>-<session>.jsonl`），按大小轮转并保留归档
+    （默认 2 MiB / 保留 5 个）。日志写失败只在 stderr 打一条限频告警，**不影响建模**。
 
 ---
 
@@ -325,27 +375,116 @@ Codex ──stdio(JSON-RPC/MCP)──> MCP/server.py ──TCP 127.0.0.1:9876(�
 | 端口被占用 | `bind_failed`：换 `--mcp-port`，或复用已在跑的那个桥 |
 | 保存时报 `image.write ERROR ... thumbnails` | 无害：Blender 想往系统缩略图缓存写预览图，被受限环境拒绝；**.blend 已保存成功**，`use_save_preview_images` 已在保存期间关闭 |
 | 无头模式下桥不响应 | 忘了 `-- --mcp-pump`（`--background` 不会跑 timers） |
+| `capture_preview` 报 `viewport_unavailable` | 无头（`--background`）没有 OpenGL 视口：改 `mode="render"` 或 `mode="auto"` |
+| `capture_preview` 报 `preview_dir_unwritable` / `preview_write_failed` | 目标目录不可写（例如同级 `Project\previews` 权限受限）：确认路径可写，或让 Blender 以有权限的账户运行 |
+| `capture_preview` 首次调用很慢 | 首个渲染要初始化 GPU 管线（实测约 20 秒，之后同进程 <1 秒）；必要时减小尺寸或调大 `timeout` |
+| 看板页面打不开 | 看板随启动它的进程结束而退出；用 `launch_log_viewer.ps1` 起一个独立隐藏进程，或重新调用 `blender_log_dashboard(action="start")` |
+| `blender_operation_log` 没有事件 | 日志目录是 `<MCP>\.runtime\logs`；若进程刚启动，先执行一次工具调用再读取（`tool_start` 会立即写入） |
 
 ---
 
 ## 12. 测试
 
-最终正常账户环境共 **230 项检查通过**（56 + 7 + 48 + 41 + 78），包含官方 SDK 自带 stdio 传输。
+最终完整验收：**8 套测试、371 项检查全部通过**（58 + 7 + 30 + 49 + 41 + 64 + 85 + 37），
+包含真实 Blender 5.2.1 LTS 与官方 MCP SDK stdio 联调。另在实际 GUI Blender 中通过 MCP 验证了
+960×720 视口截图和相机渲染：均返回原生图片内容，截图后选中集、活动对象、视角、帧、场景参数与数据块数量一致。
+早期受限构建环境的失败保留在测试报告历史部分，最终正常账户完整测试已通过。
 几何节点组复用、对象/材质等指针参数的 JSON 引用格式见 `docs/GN_REFERENCES.md`。
 
 ```powershell
 # 1) 单元/协议（不需要 Blender）
 D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\tests\test_unit_validation.py
 
-# 2) 真实 Blender 集成（GN 参数 / 形态键 / 驱动器 求值断言 + 产出 demo .blend）
+# 2) 审计日志 / 看板 / 工具 schema（不需要 Blender）
+D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\tests\test_audit_features.py
+
+# 3) 真实 Blender 集成（GN 参数 / 形态键 / 驱动器 求值断言 + 产出 demo .blend）
 D:\AI\MCP\Blender\Version\5_2_1_LTS\blender.exe --background --factory-startup --python-exit-code 1 `
     --python D:\AI\MCP\Blender\MCP\tests\blender_integration.py
 
-# 3) 真实 MCP stdio 客户端端到端（含负例、鉴权、端口与进程收尾）
+# 4) 真实 Blender 特性（事务编辑回滚/提交、截图 PNG、审计轮转）
+D:\AI\MCP\Blender\Version\5_2_1_LTS\blender.exe --background --factory-startup --python-exit-code 1 `
+    --python D:\AI\MCP\Blender\MCP\tests\blender_feature_integration.py
+
+# 5) 真实 MCP stdio 客户端端到端（含负例、鉴权、端口与进程收尾）
 D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\tests\test_mcp_stdio.py
+
+# 6) 新工具的真实 MCP stdio 联调（事务批量、审计、看板、预览）
+D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\tests\test_mcp_stdio_features.py
 ```
 
-三条命令的实测结果、环境限制与 Blender 5.2 API 差异见 **`MCP\tests\reports\TEST_REPORT.md`**。
+实测结果、环境限制与 Blender 5.2 API 差异见 **`MCP\tests\reports\TEST_REPORT.md`**。
 
-运行全部套件：`tests/run_all_tests.ps1`。在本机正常账户环境可设置
-`BLENDER_MCP_FORCE_SDK_STDIO=1` 使用官方 SDK 管道；受限构建环境的兼容传输仅用于测试。
+运行全部套件：`tests/run_all_tests.ps1`（可加 `-SkipFeature` / `-SkipStdio` / `-SkipUnit` / `-SkipIntegration`）。
+在本机正常账户环境可设置 `BLENDER_MCP_FORCE_SDK_STDIO=1` 使用官方 SDK 管道；受限构建环境的兼容传输仅用于测试。
+
+---
+
+## 13. 本版新增用法速查（截图预览 / 日志看板 / 事务编辑）
+
+### 13.1 截图预览（让模型看到模型）
+
+```text
+blender_capture_preview(object="GN_Panel", mode="auto", view="isometric",
+                        width=1280, height=720, timeout=45)
+  → 返回 MCP image 内容（image/png），外加元数据：
+    path / relative_path（Project\previews\*.png）、mode（实际模式）、size、bytes、
+    evaluated（求值后顶点数与包围盒）、diagnostics（引擎、尝试记录、场景是否恢复）
+```
+
+- 想确认「几何节点真的改了形状」时，先 `blender_set_modifier_input` 再截图对比。
+- 只想存盘不返图？直接把返回的 `path` 交给用户即可；文件已经在 `Project\previews\` 下。
+- 同名文件已存在时必须 `overwrite=true`；路径必须落在 `previews\` 子目录并以 `.png` 结尾。
+- 发布是**原子替换**：渲染先写到 `.runtime\tmp`（与目标同一卷），校验后一次 `os.replace`；
+  **不会先删除旧图**，替换失败时旧图保留，错误里会写明 `previous file, if any, is untouched`。
+- 取景是**投影拟合**而非"按最大边长估"：把求值后包围盒的 8 个角投影到相机空间，按
+  `max(投影宽, 投影高 × 宽/高) × 1.12` 设置正交相机（`sensor_fit='HORIZONTAL'`），
+  横幅/竖幅/斜视 22 单位立方体都完整入镜并保留四边留白（实测四边留白 ≥ 3 px）。
+- 渲染用的临时场景复制源场景的**帧/子帧/fps/起止帧与场景自定义属性**，
+  所以"第 22 帧"这类时间相关的几何与元数据一致；`view="current"` 就是场景相机本身（不会被改写成等轴测）。
+- 默认只预览**当前视图层**的可见网格（其它场景的对象不会混进来）。
+- 只输出几何节点**实例**时，包围盒来自依赖图的实例；若仍测不到，会给出
+  `code_hint="realize_instances"` 的可执行提示（建议加 Realize Instances 或指定 `object=`）。
+
+### 13.2 日志看板（窗口里实时看每一步）
+
+```powershell
+# 隐藏进程启动看板，并返回 URL（-Open 才会打开浏览器）
+powershell -ExecutionPolicy Bypass -File D:\AI\MCP\Blender\MCP\launch_log_viewer.ps1 -Open
+
+# 只看 URL，不开浏览器；复用已运行的看板
+powershell -ExecutionPolicy Bypass -File D:\AI\MCP\Blender\MCP\launch_log_viewer.ps1
+
+# 停止由该脚本启动的看板（按 PID + 命令行匹配，绝不误杀无关进程）
+powershell -ExecutionPolicy Bypass -File D:\AI\MCP\Blender\MCP\launch_log_viewer.ps1 -Stop
+```
+
+也可以让 Codex 直接调工具：`blender_log_dashboard(action="start")` → 返回实时 URL；
+`action="status"` 查询；`action="stop"` 只停止**本 MCP 进程**启动的看板。
+
+看板显示：时间（UTC）、来源（mcp=服务端 / bridge=Blender 侧）、事件名、工具/命令、状态（成功 / 错误 / 进行中 / 已回滚 / 已完成 / 信息）、
+耗时、请求号，点一行展开**参数与结果全文**；顶部有状态/来源/关键词过滤、自动滚动与暂停刷新。
+页面是只读的、仅回环监听、无 CDN 依赖，图片只显示字节数与哈希（不显示 base64）。
+
+**计数口径（重要）**：顶部四个数字是**操作**数——一次 MCP 调用和它触发的桥命令各算一项；
+`batch_step` / `session_*` / 审计自身的提示行只算"信息"。**"进行中"只统计仍在活动会话里、
+没有对应结束事件的调用**：会话结束（`session_stop`）后未闭合的调用归为"信息（历史）"，
+因此不会出现"调用都结束了却一直显示进行中"。
+页面按行标识复用 DOM：内容没变的行不会重写，**展开的详情与滚动位置在 1.5 秒轮询之间保持不变**
+（勾选"自动滚动"时才贴到最新一行）。
+
+### 13.3 事务批量编辑
+
+```text
+blender_batch_graph_edit(group="Panel", operations=[...])          # 默认事务：全成功才替换
+blender_batch_graph_edit(group="Panel", operations=[...], transactional=False,
+                         continue_on_error=True)                   # 旧行为：部分生效，需自行修补
+```
+
+- 失败时返回 `isError`，消息里直接说明「节点组未被修改」以及第几步、什么错误（`graph_edit_rolled_back`）。
+- 成功时 `committed=true`、`transaction.status="committed"`，并给出重定向统计（修改器 / 嵌套节点 / 驱动器目标数量）
+  与 `remap_mode`（`native`＝Blender 原生 `ID.user_remap`，可覆盖手工枚举不到的引用）。
+- 提交阶段的任何失败都会**整体撤销并报错**，不会"报成功但留下问题"：交换失败、仍有未枚举引用、
+  **修改器输入无法还原**（`modifier_inputs_lost`）、**旧数据块无法删除**（`transaction_failed`）四种情况都会
+  反向重定向、恢复 `use_fake_user`、还原名称、删除草稿；成功/失败都不会留下 `.__mcp_` 数据块。
+- 链接库节点组会被拒绝（`unsafe_linked_group`），因为它们不允许就地编辑。

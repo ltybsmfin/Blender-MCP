@@ -20,10 +20,37 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from ..bridge import BridgeClient
 from ..models import GraphOperation, InterfaceSocketSpec
 from ._common import call
+
+
+def _rollback_message(group: str, payload: dict) -> str:
+    """A bounded, explicit description of a transaction that was rolled back."""
+    failures = payload.get("failures") or []
+    head = failures[0] if failures else {}
+    detail = "; ".join(
+        "#%s %s: %s (%s)" % (entry.get("index"), entry.get("op"), entry.get("error"), entry.get("code"))
+        for entry in failures[:8]
+        if isinstance(entry, dict)
+    )
+    extra = len(failures) - 8
+    if extra > 0:
+        detail += "; +%d more" % extra
+    return (
+        "graph_edit_rolled_back: node group %r was NOT modified - operation #%s (%s) failed, so the whole "
+        "transaction was rolled back to the original group: %s. Nothing is half-applied: nodes, links, "
+        "socket defaults, interface, modifier inputs and references are unchanged. Fix the failing "
+        "operation and retry, or pass transactional=false to apply the batch non-atomically."
+        % (
+            payload.get("group") or group,
+            head.get("index"),
+            head.get("op"),
+            detail or "no failure detail was reported",
+        )
+    )
 
 
 def register(mcp: FastMCP, bridge: BridgeClient) -> None:
@@ -306,24 +333,39 @@ def register(mcp: FastMCP, bridge: BridgeClient) -> None:
         name="blender_batch_graph_edit",
         description=(
             "Apply an ordered list of graph edits (create_node, set_node_property, set_socket_default, "
-            "link_sockets, unlink_socket, remove_node) in ONE call and get per-operation results. Edits are "
-            "NOT transactional: on a failure the response lists exactly which operations completed "
-            "('completed'), which one failed ('failures'), sets partial=true, and reports the resulting "
-            "group state - nothing is rolled back, so use 'completed' to decide how to continue. "
-            "continue_on_error=true keeps going after a failure (useful for probing several edits at once)."
+            "link_sockets, unlink_socket, remove_node) in ONE call and get per-operation results. "
+            "TRANSACTIONAL BY DEFAULT: the whole list is applied to an isolated staging copy of the node "
+            "group and the group is only swapped in when every operation succeeded. A failure therefore "
+            "leaves the original group byte-for-byte intact - nodes, links, socket defaults, the interface, "
+            "modifier input values, nested group references and drivers - and comes back as a tool error "
+            "with status 'rolled_back' plus the per-step failures; nothing is half-applied. On success the "
+            "response reports committed=true and the group datablock identity is replaced (same name and "
+            "interface identifiers, so users keep working). Linked-library groups are refused. Set "
+            "transactional=false to get the legacy non-atomic behaviour, which is the ONLY mode in which "
+            "continue_on_error is accepted; in that mode 'completed' edits stay applied and must be "
+            "repaired explicitly (the response then reports rollback=false, partial=true)."
         ),
     )
     def blender_batch_graph_edit(
         group: str,
         operations: list[GraphOperation],
+        transactional: bool = True,
         continue_on_error: bool = False,
     ) -> dict:
-        return call(
+        payload = call(
             bridge,
             "batch_graph_edit",
             {
                 "group": group,
                 "operations": [operation.to_bridge_params() | {"op": operation.op} for operation in operations],
+                "transactional": transactional,
                 "continue_on_error": continue_on_error,
             },
         )
+        if payload.get("rolled_back"):
+            error = ToolError(_rollback_message(group, payload))
+            # The audit layer reads this to log the per-step results and the
+            # rollback verdict even though the call is reported as an error.
+            error.audit_payload = payload  # type: ignore[attr-defined]
+            raise error
+        return payload

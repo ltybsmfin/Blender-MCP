@@ -15,6 +15,7 @@ A JSON report is written to ``MCP/tests/reports/unit_report.json``.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import socket
@@ -380,9 +381,23 @@ class DispatchValidationTests(unittest.TestCase):
             "list_node_types", "describe_node_type", "batch_graph_edit", "inspect_shape_keys",
             "create_shape_key", "set_shape_key_coordinates", "set_shape_key", "remove_shape_key",
             "inspect_drivers", "add_driver", "update_driver", "remove_driver", "save_blend",
+            "capture_preview",
         }
         missing = required - set(addon._COMMANDS)
         self.assertEqual(missing, set(), "missing bridge commands: %s" % sorted(missing))
+
+    def test_batch_command_is_transactional_by_default(self):
+        """The transactional default is part of the tool contract, so pin it here."""
+        signature = inspect.signature(addon._COMMANDS["batch_graph_edit"]["func"])
+        self.assertIs(signature.parameters["transactional"].default, True)
+        self.assertIs(signature.parameters["continue_on_error"].default, False)
+
+    def test_capture_preview_bounds_are_self_consistent(self):
+        self.assertLess(addon.PREVIEW_MIN_DIMENSION, addon.PREVIEW_MAX_DIMENSION)
+        self.assertEqual(addon.PREVIEW_MAX_DIMENSION, 2048)
+        self.assertLessEqual(addon.PREVIEW_MAX_BYTES, 4 * 1024 * 1024)
+        self.assertIn("viewport", addon._preview_modes())
+        self.assertIn("isometric", addon.PREVIEW_VIEW_DIRECTIONS)
 
     def test_no_python_execution_command_exists(self):
         """There must be no eval/exec style bridge command."""
@@ -688,6 +703,7 @@ class ServerToolSurfaceTests(unittest.TestCase):
             "blender_set_shape_key_coordinates", "blender_set_shape_key", "blender_remove_shape_key",
             "blender_inspect_drivers", "blender_add_driver", "blender_update_driver",
             "blender_remove_driver", "blender_save_blend", "blender_launch_blender",
+            "blender_capture_preview", "blender_operation_log", "blender_log_dashboard",
         }
         missing = required - set(self.tools)
         self.assertEqual(missing, set(), "missing MCP tools: %s" % sorted(missing))
@@ -712,6 +728,9 @@ class ServerToolSurfaceTests(unittest.TestCase):
         self.assertEqual(shapes["properties"]["object"]["type"], "string")
         batch = self.tools["blender_batch_graph_edit"].inputSchema
         self.assertIn("operations", batch["properties"])
+        self.assertEqual(batch["properties"]["transactional"]["default"], True,
+                         "blender_batch_graph_edit must be transactional by default")
+        self.assertEqual(batch["properties"]["continue_on_error"]["default"], False)
         items = batch["properties"]["operations"]["items"]
         # FastMCP references the pydantic model instead of inlining it.
         reference = items.get("$ref", items.get("type"))
@@ -726,6 +745,17 @@ class ServerToolSurfaceTests(unittest.TestCase):
         drivers = self.tools["blender_add_driver"].inputSchema
         self.assertIn("variables", drivers["properties"])
         self.assertEqual(drivers["properties"]["owner_kind"].get("enum"), ["object", "shape_keys", "node_group", "scene"])
+        preview = self.tools["blender_capture_preview"]
+        self.assertIsNone(preview.outputSchema,
+                          "the preview tool must return native image content, not a JSON output schema")
+        self.assertEqual(preview.inputSchema["properties"]["mode"]["enum"], ["auto", "viewport", "render"])
+        self.assertEqual(preview.inputSchema["properties"]["view"]["enum"],
+                         ["current", "isometric", "front", "top", "back", "right"])
+        self.assertEqual(preview.inputSchema["properties"]["width"]["default"], 1280)
+        self.assertEqual(preview.inputSchema["properties"]["timeout"]["default"], 45.0)
+        dashboard = self.tools["blender_log_dashboard"].inputSchema
+        self.assertEqual(dashboard["properties"]["action"]["enum"], ["start", "status", "stop"])
+        self.assertEqual(dashboard["properties"]["open_browser"]["default"], False)
 
     def test_every_tool_has_a_description(self):
         for name, tool in self.tools.items():

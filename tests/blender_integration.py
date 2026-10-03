@@ -263,6 +263,13 @@ def build_demo() -> dict:
         {"completed": batch["completed_count"], "failures": batch["failures"], "partial": batch["partial"]},
     )
     C.check("batch_graph_edit_reports_no_rollback", batch["rollback"] is False, batch["note"])
+    C.check(
+        "batch_graph_edit_reports_a_committed_transaction",
+        batch["transactional"] is True and batch["committed"] is True
+        and batch["rolled_back"] is False
+        and batch["transaction"]["status"] == "committed",
+        {"transactional": batch["transactional"], "transaction": batch["transaction"]},
+    )
 
     # Negative: an impossible socket link must be an error, not a silent success.
     link_error = None

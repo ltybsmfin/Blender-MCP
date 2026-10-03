@@ -206,9 +206,16 @@ async def run_positive(session: ClientSession) -> dict:
         "blender_set_modifier_input", "blender_describe_node_type", "blender_batch_graph_edit",
         "blender_create_shape_key", "blender_set_shape_key_coordinates", "blender_set_shape_key",
         "blender_add_driver", "blender_inspect_drivers", "blender_save_blend", "blender_launch_blender",
+        "blender_capture_preview", "blender_operation_log", "blender_log_dashboard",
     }
     record("required_tools_listed", required.issubset(set(names)), {"count": len(names), "missing": sorted(required - set(names))})
     context["tool_count"] = len(names)
+    batch_tool = next(tool for tool in listing.tools if tool.name == "blender_batch_graph_edit")
+    record(
+        "batch_tool_is_transactional_by_default",
+        batch_tool.inputSchema["properties"]["transactional"]["default"] is True,
+        {"transactional": batch_tool.inputSchema["properties"]["transactional"]},
+    )
 
     ok, health = await expect_ok(session, "health_reports_blender_version", "blender_health", {})
     record(
@@ -294,6 +301,13 @@ async def run_positive(session: ClientSession) -> dict:
         "batch_graph_edit_all_operations_completed",
         batch.get("completed_count") == 8 and batch.get("failed_count") == 0 and batch.get("rollback") is False,
         {"completed": batch.get("completed_count"), "failures": batch.get("failures")},
+    )
+    record(
+        "batch_graph_edit_reports_a_committed_transaction",
+        batch.get("transactional") is True and batch.get("committed") is True
+        and batch.get("rolled_back") is False
+        and batch.get("transaction", {}).get("status") == "committed",
+        {"transactional": batch.get("transactional"), "transaction": batch.get("transaction")},
     )
 
     ok, inspected = await expect_ok(
@@ -487,6 +501,29 @@ async def run_negatives(session: ClientSession) -> None:
     await expect_error(session, "neg_incompatible_link", "blender_link_sockets",
                        {"group": "MCP_ParametricGroup", "from_node": "Grid", "from_socket": "Mesh",
                         "to_node": "XForm", "to_socket": "Translation"}, "incompatible_sockets")
+    # A transaction that fails anywhere must be an error, and must leave the
+    # node group exactly as it was.
+    _ok, before_group = await expect_ok(session, "neg_rollback_snapshot", "blender_inspect_node_group",
+                                        {"name": "MCP_ParametricGroup", "include_sockets": False})
+    await expect_error(session, "neg_transactional_batch_rolls_back", "blender_batch_graph_edit",
+                       {"group": "MCP_ParametricGroup",
+                        "operations": [
+                            {"op": "create_node", "node_type": "GeometryNodeMeshCube", "name": "RolledBack"},
+                            {"op": "set_socket_default", "node": "Missing", "socket": "Size", "value": 1.0},
+                        ]}, "graph_edit_rolled_back")
+    _ok, after_group = await expect_ok(session, "neg_rollback_snapshot_after", "blender_inspect_node_group",
+                                       {"name": "MCP_ParametricGroup", "include_sockets": False})
+    record(
+        "neg_rollback_left_the_group_unchanged",
+        [node["name"] for node in before_group.get("nodes", [])] == [node["name"] for node in after_group.get("nodes", [])]
+        and len(before_group.get("links", [])) == len(after_group.get("links", []))
+        and "RolledBack" not in [node["name"] for node in after_group.get("nodes", [])],
+        {"nodes": [node["name"] for node in after_group.get("nodes", [])]},
+    )
+    await expect_error(session, "neg_transactional_incompatible_options", "blender_batch_graph_edit",
+                       {"group": "MCP_ParametricGroup", "transactional": True, "continue_on_error": True,
+                        "operations": [{"op": "create_node", "node_type": "GeometryNodeMeshCube",
+                                        "name": "Never"}]}, "incompatible_options")
     await expect_error(session, "neg_unknown_node_type", "blender_create_node",
                        {"group": "MCP_ParametricGroup", "node_type": "GeometryNodeDoesNotExist"}, "invalid_node_type")
     await expect_error(session, "neg_describe_unknown_node_type", "blender_describe_node_type",
