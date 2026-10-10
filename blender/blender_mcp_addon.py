@@ -2146,6 +2146,76 @@ def _shape_key_report(obj) -> dict:
 # --------------------------------------------------------------------------- #
 # commands: mesh creation / custom properties / save
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# guarded collection creation (scene isolation)
+# --------------------------------------------------------------------------- #
+# A new object is only ever linked into the ACTIVE scene's own collection
+# hierarchy.  Without this guard ``create_mesh_object(collection=...)`` could
+# inject case objects into a pre-existing collection that belongs to another
+# scene, which would modify that scene's data from a case-scene session.
+def _collection_owning_scenes(collection) -> list:
+    owners = []
+    for scene in bpy.data.scenes:
+        try:
+            hierarchy = [scene.collection, *scene.collection.children_recursive]
+        except Exception:  # noqa: BLE001
+            continue
+        if any(candidate is collection for candidate in hierarchy):
+            owners.append(scene.name)
+    return owners
+
+
+def _guarded_collection_target(scene, collection_name: str):
+    """Resolve a link target restricted to the active scene's collection hierarchy."""
+    collection = bpy.data.collections.get(str(collection_name))
+    if collection is None:
+        raise CommandError(
+            "collection_not_found",
+            "no collection named %r" % collection_name,
+            details={"available": [item.name for item in bpy.data.collections]},
+        )
+    if scene is None:
+        raise CommandError(
+            "context_unavailable",
+            "there is no active scene, so the collection %r cannot be proven to belong to it" % collection.name,
+        )
+    try:
+        own = [scene.collection, *scene.collection.children_recursive]
+    except Exception as exc:  # noqa: BLE001
+        raise CommandError(
+            "context_unavailable",
+            "the active scene %r has no readable collection hierarchy: %s" % (getattr(scene, "name", None), exc),
+        ) from exc
+    active_name = getattr(scene, "name", None)
+    owners = _collection_owning_scenes(collection)
+    foreign_scenes = sorted(name for name in owners if name != active_name)
+    if any(candidate is collection for candidate in own):
+        if foreign_scenes:
+            # A collection linked into several scenes is shared data: linking a case
+            # object there would change the other scene as well.
+            raise CommandError(
+                "collection_shared_across_scenes",
+                "collection %r is part of the active scene %r but also of %s, so a new object there would "
+                "change those scenes too; use a collection that exists only in the active scene"
+                % (collection.name, active_name, ", ".join(foreign_scenes)),
+                details={"collection": collection.name, "collection_scenes": owners,
+                         "active_scene": active_name, "foreign_scenes": foreign_scenes},
+            )
+        return collection
+    raise CommandError(
+        "collection_outside_scene",
+        "collection %r is not part of the active scene %r, so linking a new object there would change "
+        "another scene's data; create the collection inside the active scene (or use its own collection) "
+        "first" % (collection.name, active_name),
+        details={
+            "collection": collection.name,
+            "collection_scenes": owners,
+            "active_scene": active_name,
+            "active_scene_collections": [item.name for item in own],
+        },
+    )
+
+
 @command("create_mesh_object", summary="create a mesh object from explicit geometry")
 def _cmd_create_mesh_object(
     name: str,
@@ -2164,6 +2234,13 @@ def _cmd_create_mesh_object(
             "already_exists",
             "an object named %r already exists; choose another name" % name,
         )
+    # Resolve (and restrict) the link target BEFORE any datablock is allocated, so a
+    # rejected target leaves no mesh/object behind and can never link the new object
+    # into another scene's collection.
+    active_scene = getattr(bpy.context, "scene", None)
+    if active_scene is None:
+        raise CommandError("context_unavailable", "there is no active scene to link a new object into")
+    target = _guarded_collection_target(active_scene, collection) if collection else active_scene.collection
     verts = []
     for index, v in enumerate(vertices):
         if not isinstance(v, (list, tuple)) or len(v) != 3:
@@ -2204,18 +2281,6 @@ def _cmd_create_mesh_object(
         raise CommandError("mesh_creation_failed", str(exc)) from exc
 
     obj = bpy.data.objects.new(name, mesh)
-    target = bpy.context.scene.collection
-    if collection:
-        coll = bpy.data.collections.get(collection)
-        if coll is None:
-            bpy.data.objects.remove(obj)
-            bpy.data.meshes.remove(mesh)
-            raise CommandError(
-                "collection_not_found",
-                "no collection named %r" % collection,
-                details={"available": [c.name for c in bpy.data.collections]},
-            )
-        target = coll
     target.objects.link(obj)
     if location:
         obj.location = [float(c) for c in location]
@@ -2444,6 +2509,1165 @@ def _cmd_set_frame(frame: int, subframe: float = 0.0):
 def _cmd_update_depsgraph():
     deps = depsgraph_update()
     return {"updated": True, "frame_current": bpy.context.scene.frame_current, "objects": len(bpy.data.objects)}
+
+
+# --------------------------------------------------------------------------- #
+# commands: scene isolation (case scenes, switching, per-scene .blend export)
+# --------------------------------------------------------------------------- #
+# A "case scene" is a brand new, genuinely empty scene that case work happens in,
+# so the pre-existing scenes of the loaded file are never touched.  Export writes
+# ONE scene plus its proven dependency closure with ``bpy.data.libraries.write``
+# and verifies the staged file read-only before publishing it atomically; the
+# current main file is never saved, re-pointed or renamed.
+MIN_STAGED_BLEND_BYTES = 128
+_STAGE_PREFIX = ".mcp-scene-stage."
+_STAGE_SUFFIX = ".blend"
+#: ``bpy.data`` attributes that are not ID collections.
+_DATA_NON_ID_ATTRS = frozenset({"temp_data", "filepath", "version", "is_dirty", "is_saved", "is_updating"})
+
+
+def _id_key(block):
+    """A session-stable key for one ID datablock (its address), or ``None``."""
+    try:
+        return int(block.as_pointer())
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _scene_stable_id(scene) -> dict:
+    """A stable scene identifier: ``session_uid`` when exposed, else the address."""
+    uid = getattr(scene, "session_uid", None)
+    return {
+        "session_uid": uid,
+        "as_pointer": _id_key(scene),
+        "source": "session_uid" if uid is not None else "as_pointer",
+    }
+
+
+def _window_list() -> list:
+    windows = []
+    try:
+        managers = list(bpy.data.window_managers)
+    except Exception:  # noqa: BLE001
+        return windows
+    for manager in managers:
+        try:
+            windows.extend(list(manager.windows))
+        except Exception:  # noqa: BLE001
+            continue
+    return windows
+
+
+def _window_report(context_window) -> list:
+    report = []
+    for index, window in enumerate(_window_list()):
+        try:
+            scene_name = window.scene.name if window.scene else None
+        except Exception:  # noqa: BLE001
+            scene_name = None
+        report.append({"index": index, "scene": scene_name, "is_context_window": window is context_window})
+    return report
+
+
+def _scene_roster() -> dict:
+    """Structural fingerprint of every scene, to prove nothing else changed."""
+    roster = {}
+    for scene in bpy.data.scenes:
+        roster[scene.name] = {
+            "objects": sorted(obj.name for obj in scene.objects),
+            "collection_objects": sorted(obj.name for obj in scene.collection.all_objects),
+            "child_collections": sorted(coll.name for coll in scene.collection.children_recursive),
+            "world": scene.world.name if scene.world else None,
+            "view_layers": sorted(layer.name for layer in scene.view_layers),
+            "frame": [scene.frame_start, scene.frame_end, scene.frame_current],
+        }
+    return roster
+
+
+def _scene_emptiness(scene) -> dict:
+    object_names = sorted(obj.name for obj in scene.objects)
+    collection_objects = sorted(obj.name for obj in scene.collection.all_objects)
+    child_collections = sorted(coll.name for coll in scene.collection.children_recursive)
+    return {
+        "objects": len(scene.objects),
+        "object_names": object_names,
+        "collection_objects": len(collection_objects),
+        "child_collections": len(child_collections),
+        "world": scene.world.name if scene.world else None,
+        "view_layers": len(scene.view_layers),
+        "empty": not object_names and not collection_objects and not child_collections,
+    }
+
+
+def _restore_window_scene(window, scene) -> bool:
+    if scene is None or window is None:
+        return False
+    try:
+        window.scene = scene
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        return window.scene is scene
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _rollback_window(window, previous) -> dict:
+    """Restore the window's previous scene and report what actually happened."""
+    if window is None or previous is None:
+        return {"attempted": False, "restored": False, "reason": "no window or no previous scene to restore"}
+    restored = bool(_restore_window_scene(window, previous))
+    try:
+        current = getattr(window.scene, "name", None)
+    except Exception:  # noqa: BLE001
+        current = None
+    return {
+        "attempted": True,
+        "restored": restored,
+        "previous_scene": getattr(previous, "name", None),
+        "window_scene": current,
+    }
+
+
+def _rollback_phrase(previous, rollback: dict) -> str:
+    if rollback.get("restored"):
+        return "the previous scene %r was restored" % getattr(previous, "name", None)
+    return (
+        "restoring the previous scene %r FAILED - the window now shows %r; fix the window manually"
+        % (getattr(previous, "name", None), rollback.get("window_scene"))
+    )
+
+
+def _activate_scene(scene):
+    """Assign ``window.scene`` and *prove* the switch instead of assuming it.
+
+    Returns ``(report, window, previous_scene)``.  A switch that cannot be proven is
+    rolled back and reported as an error: a silently unswitched context would make
+    every later tool call edit the old scene while claiming to work on the case
+    scene.  Proof means the window kept the assignment **and** ``bpy.context.scene``
+    is the target scene; a missing context scene fails closed as well.
+    """
+    context_window = getattr(bpy.context, "window", None)
+    window = context_window
+    source = "context"
+    if window is None:
+        windows = _window_list()
+        if not windows:
+            raise CommandError(
+                "context_unavailable",
+                "this Blender session exposes no window at all, so activating scene %r cannot be shown or "
+                "verified; refusing to report an unproven switch (pass activate=false to create the scene "
+                "without switching)" % scene.name,
+                details={"background": bool(getattr(bpy.app, "background", False)), "windows": []},
+            )
+        window = windows[0]
+        source = "first_window"
+    previous = window.scene
+    context_scene = getattr(bpy.context, "scene", None)
+    if previous is scene:
+        if context_scene is None:
+            raise CommandError(
+                "context_unavailable",
+                "the window already shows scene %r but bpy.context.scene is unavailable, so the active "
+                "context cannot be proven; refusing to report an unproven switch" % scene.name,
+                details={"window_source": source, "windows": _window_report(context_window)},
+            )
+        if context_scene is not scene:
+            raise CommandError(
+                "scene_switch_unverified",
+                "window already shows %r but bpy.context.scene reports %r; follow-up tools would edit the "
+                "wrong scene, so the call is reported as a failure instead of an unproven success. Report "
+                "this to the workstream owner if it persists on a real GUI session."
+                % (scene.name, context_scene.name),
+                details={"window_source": source, "windows": _window_report(context_window),
+                         "rollback": {"attempted": False, "restored": False,
+                                      "reason": "the window was already showing the target scene"}},
+            )
+        return {
+            "changed": False,
+            "previous_scene": previous.name if previous else None,
+            "active_scene": scene.name,
+            "context_scene": context_scene.name,
+            "context_followed": True,
+            "window_source": source,
+            "verified_by": "window+context",
+            "rollback": {"attempted": False, "restored": False,
+                         "reason": "the window was already showing the target scene"},
+            "windows": _window_report(context_window),
+        }, window, previous
+    try:
+        window.scene = scene
+    except Exception as exc:  # noqa: BLE001
+        rollback = _rollback_window(window, previous)
+        raise CommandError(
+            "scene_switch_failed",
+            "assigning window.scene failed for %r: %s (%s)" % (scene.name, exc, _rollback_phrase(previous, rollback)),
+            details={"window_source": source, "previous_scene": getattr(previous, "name", None),
+                     "rollback": rollback},
+        ) from exc
+    if window.scene is not scene:
+        rollback = _rollback_window(window, previous)
+        raise CommandError(
+            "scene_switch_failed",
+            "Blender did not keep window.scene = %r (it reports %r); %s"
+            % (scene.name, getattr(window.scene, "name", None), _rollback_phrase(previous, rollback)),
+            details={"window_source": source, "windows": _window_report(context_window), "rollback": rollback},
+        )
+    try:
+        bpy.context.view_layer.update()
+    except Exception:  # noqa: BLE001
+        pass
+    context_scene = getattr(bpy.context, "scene", None)
+    if context_scene is not scene:
+        rollback = _rollback_window(window, previous)
+        raise CommandError(
+            "scene_switch_unverified",
+            "window.scene was set to %r but bpy.context.scene reports %s, so follow-up tools would keep "
+            "editing the old scene; %s. Report this to the workstream owner if it persists on a real GUI "
+            "session."
+            % (scene.name, getattr(context_scene, "name", None), _rollback_phrase(previous, rollback)),
+            details={"window_source": source, "windows": _window_report(context_window), "rollback": rollback},
+        )
+    return {
+        "changed": True,
+        "previous_scene": previous.name if previous else None,
+        "active_scene": scene.name,
+        "context_scene": context_scene.name,
+        "context_followed": True,
+        "window_source": source,
+        "verified_by": "window+context",
+        "rollback": {"attempted": False, "restored": False, "reason": "no rollback was needed"},
+        "windows": _window_report(context_window),
+    }, window, previous
+
+
+def _remove_new_scene(scene, fallback_scene) -> None:
+    """Roll back a scene this command just created (never any other scene)."""
+    for window in _window_list():
+        try:
+            if window.scene is scene:
+                _restore_window_scene(window, fallback_scene)
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        bpy.data.scenes.remove(scene)
+    except Exception as exc:  # noqa: BLE001
+        raise CommandError(
+            "scene_rollback_failed",
+            "the newly created scene %r could not be removed after a failed creation: %s" % (scene.name, exc),
+        ) from exc
+
+
+@command("create_case_scene", summary="create a new, genuinely empty scene for isolated case work")
+def _cmd_create_case_scene(name: str, activate: bool = True):
+    requested = str(name or "").strip()
+    if not requested:
+        raise CommandError("invalid_argument", "name must not be empty")
+    if not isinstance(activate, bool):
+        raise CommandError("invalid_argument", "activate must be a boolean")
+    if bpy.data.scenes.get(requested) is not None:
+        raise CommandError(
+            "already_exists",
+            "a scene named %r already exists; this tool never auto-suffixes names because an accidental "
+            "%r would silently split case data - choose a globally unique, prefixed name"
+            % (requested, requested + ".001"),
+            details={"existing_scenes": sorted(scene.name for scene in bpy.data.scenes)},
+        )
+    roster_before = _scene_roster()
+    objects_before = sorted(obj.name for obj in bpy.data.objects)
+    worlds_before = sorted(world.name for world in bpy.data.worlds)
+    mainfile_before = bpy.data.filepath
+    previous_scene = getattr(bpy.context, "scene", None)
+
+    scene = bpy.data.scenes.new(requested)
+    try:
+        if bpy.data.scenes.get(requested) is not scene:
+            raise CommandError(
+                "scene_creation_failed",
+                "Blender created the scene as %r instead of the requested %r (ID names are limited to 63 "
+                "bytes and are never auto-suffixed here); the new scene was removed again"
+                % (scene.name, requested),
+                details={"created_name": scene.name, "requested_name": requested},
+            )
+        emptiness = _scene_emptiness(scene)
+        if not emptiness["empty"]:
+            raise CommandError(
+                "scene_creation_failed",
+                "bpy.data.scenes.new() did not produce an empty scene (data was copied into it); the new "
+                "scene was removed again so no pre-existing data is affected",
+                details=emptiness,
+            )
+        world = scene.world
+        if world is not None and world.name in worlds_before:
+            raise CommandError(
+                "scene_creation_failed",
+                "the new scene reuses the pre-existing world %r instead of starting empty; it was removed "
+                "again" % world.name,
+                details={"world": world.name, "existing_worlds": worlds_before},
+            )
+        roster_after = _scene_roster()
+        added = sorted(set(roster_after) - set(roster_before))
+        changed = sorted(name for name in roster_before if roster_after.get(name) != roster_before[name])
+        if added != [requested] or changed:
+            raise CommandError(
+                "scene_isolation_violation",
+                "creating the scene changed data outside the new scene; the new scene was removed again",
+                details={"added_scenes": added, "changed_scenes": changed},
+            )
+        if sorted(obj.name for obj in bpy.data.objects) != objects_before:
+            raise CommandError(
+                "scene_isolation_violation",
+                "the object inventory of the file changed while creating an empty scene; the new scene was "
+                "removed again",
+                details={"objects_before": objects_before, "objects_after": sorted(o.name for o in bpy.data.objects)},
+            )
+    except BaseException:
+        _remove_new_scene(scene, previous_scene)
+        raise
+
+    activation = None
+    if activate:
+        try:
+            activation, window, previous_window_scene = _activate_scene(scene)
+        except BaseException:
+            _remove_new_scene(scene, previous_scene)
+            raise
+        # The roster is verified again AFTER the switch: activation itself must not
+        # have touched any pre-existing scene either.
+        post_roster = _scene_roster()
+        changed_after = sorted(
+            name for name in roster_before if post_roster.get(name) != roster_before[name]
+        )
+        added_after = sorted(set(post_roster) - set(roster_before))
+        if changed_after or added_after != [requested]:
+            rollback = _rollback_window(window, previous_window_scene)
+            _remove_new_scene(scene, previous_scene)
+            raise CommandError(
+                "scene_isolation_violation",
+                "activating the new scene changed data outside it; the switch and the new scene were "
+                "rolled back (%s)" % _rollback_phrase(previous_window_scene, rollback),
+                details={"changed_scenes": changed_after, "added_scenes": added_after, "rollback": rollback},
+            )
+
+    current_scene = getattr(bpy.context, "scene", None)
+    return {
+        "created": True,
+        "name": scene.name,
+        "scene": scene.name,
+        "stable_id": _scene_stable_id(scene),
+        "previous_scene": previous_scene.name if previous_scene else None,
+        "current_scene": current_scene.name if current_scene else None,
+        "activation": activation,
+        "empty": _scene_emptiness(scene),
+        "existing_scenes": sorted(name for name in _scene_roster() if name != scene.name),
+        "existing_scenes_unchanged": True,
+        "changed_scenes": [],
+        "objects_total": len(bpy.data.objects),
+        "scenes_total": len(bpy.data.scenes),
+        "mainfile": {"filepath": bpy.data.filepath, "unchanged": bpy.data.filepath == mainfile_before},
+        "windows": _window_report(getattr(bpy.context, "window", None)),
+    }
+
+
+@command("switch_scene", summary="activate an existing scene in the GUI window (verified, never assumed)")
+def _cmd_switch_scene(name: str):
+    requested = str(name or "").strip()
+    if not requested:
+        raise CommandError("invalid_argument", "name must not be empty")
+    scene = bpy.data.scenes.get(requested)
+    if scene is None:
+        raise CommandError(
+            "scene_not_found",
+            "no scene named %r in this file" % requested,
+            details={"available": sorted(item.name for item in bpy.data.scenes)},
+        )
+    roster_before = _scene_roster()
+    mainfile_before = bpy.data.filepath
+    activation, window, previous_window_scene = _activate_scene(scene)
+    roster_after = _scene_roster()
+    if roster_after != roster_before:
+        changed = sorted(name for name in roster_before if roster_after.get(name) != roster_before[name])
+        rollback = _rollback_window(window, previous_window_scene)
+        raise CommandError(
+            "scene_isolation_violation",
+            "switching scenes changed scene data; the switch was rolled back (%s) - investigate before "
+            "continuing" % _rollback_phrase(previous_window_scene, rollback),
+            details={"changed_scenes": changed, "rollback": rollback},
+        )
+    current_scene = getattr(bpy.context, "scene", None)
+    return {
+        "switched": True,
+        "scene": scene.name,
+        "stable_id": _scene_stable_id(scene),
+        "current_scene": current_scene.name if current_scene else None,
+        "activation": activation,
+        "scenes": sorted(item.name for item in bpy.data.scenes),
+        "roster_unchanged": True,
+        "mainfile": {"filepath": bpy.data.filepath, "unchanged": bpy.data.filepath == mainfile_before},
+        "windows": _window_report(getattr(bpy.context, "window", None)),
+    }
+
+
+@command("list_scenes", mutating=False, summary="scene inventory with per-scene object counts (and names)")
+def _cmd_list_scenes(include_objects: bool = False):
+    current = getattr(bpy.context, "scene", None)
+    rows = []
+    for scene in bpy.data.scenes:
+        row = {
+            "name": scene.name,
+            "stable_id": _scene_stable_id(scene),
+            "is_current": scene is current,
+            "objects": len(scene.objects),
+            "collections": len(scene.collection.children_recursive),
+            "world": scene.world.name if scene.world else None,
+            "frame": [scene.frame_start, scene.frame_end, scene.frame_current],
+            "window_scenes": [
+                index for index, window in enumerate(_window_list()) if window.scene is scene
+            ],
+        }
+        if include_objects:
+            row["object_names"] = sorted(obj.name for obj in scene.objects)
+            row["collection_objects"] = sorted(obj.name for obj in scene.collection.all_objects)
+        rows.append(row)
+    return {
+        "current": current.name if current else None,
+        "count": len(rows),
+        "scenes": rows,
+        "objects_total": len(bpy.data.objects),
+        "scenes_total": len(bpy.data.scenes),
+        "blend_filepath": bpy.data.filepath,
+        "windows": _window_report(getattr(bpy.context, "window", None)),
+    }
+
+
+# -- per-scene export ------------------------------------------------------- #
+def _require_scene_export_api() -> dict:
+    """Refuse the export when the 5.2 APIs it needs to be safe are missing."""
+    libraries = getattr(bpy.data, "libraries", None)
+    if libraries is None or getattr(libraries, "write", None) is None:
+        raise CommandError(
+            "api_unsupported",
+            "bpy.data.libraries.write() is unavailable in this Blender build; scene export is refused "
+            "rather than emulated with save_as_mainfile (which would write the whole live file)",
+        )
+    temp = getattr(bpy.data, "temp_data", None)
+    if not callable(temp):
+        raise CommandError(
+            "api_unsupported",
+            "bpy.data.temp_data is unavailable or is not a callable context-manager factory in this "
+            "Blender build, so a staged file cannot be verified read-only before publishing; scene export "
+            "is refused",
+        )
+    if not hasattr(bpy.data, "user_map"):
+        raise CommandError(
+            "api_unsupported",
+            "bpy.data.user_map() is unavailable, so the dependency closure of the scene cannot be proven; "
+            "scene export is refused",
+        )
+    return {"libraries_write": True, "temp_data_libraries_load": True, "user_map": True}
+
+
+def _live_id_collections() -> dict:
+    """Every ``bpy.data`` ID collection this Blender build exposes, by attribute name."""
+    found = {}
+    # ``dir()`` is the primary source; the ID-type map the driver tools already rely
+    # on is merged in so the lookup still knows the attribute names if a build
+    # hides RNA properties from ``dir()``.
+    names = set(_DRIVER_ID_COLLECTIONS.values()) | set(dir(bpy.data))
+    for name in sorted(names):
+        if name.startswith("_") or name in _DATA_NON_ID_ATTRS:
+            continue
+        try:
+            value = getattr(bpy.data, name)
+        except Exception:  # noqa: BLE001
+            continue
+        if callable(value) or isinstance(value, (str, bytes, int, float, bool, tuple, list, dict, set)):
+            continue
+        if not (hasattr(value, "keys") and hasattr(value, "__len__") and hasattr(value, "__getitem__")):
+            continue
+        found[name] = value
+    return found
+
+
+def _name_collections(holder) -> dict:
+    """Name lists exposed by a ``BlendDataLibraries`` side (``objects``, ``meshes``, ...)."""
+    found = {}
+    for name in dir(holder):
+        if name.startswith("_"):
+            continue
+        try:
+            value = getattr(holder, name)
+        except Exception:  # noqa: BLE001
+            continue
+        if callable(value) or isinstance(value, (str, bytes)):
+            continue
+        try:
+            items = list(value)
+        except TypeError:
+            continue
+        if all(isinstance(item, str) for item in items):
+            found[name] = sorted(items)
+    return found
+
+
+def _id_lookup() -> dict:
+    """Map every live ID address to ``(bpy.data attribute, name, block)``."""
+    lookup = {}
+    for attribute, collection in _live_id_collections().items():
+        for block in collection:
+            key = _id_key(block)
+            if key is not None:
+                lookup[key] = (attribute, str(getattr(block, "name", "")), block)
+    return lookup
+
+
+def _dependency_closure(roots) -> list:
+    """IDs used (transitively) by ``roots``, *including the roots themselves*.
+
+    ``user_map()`` maps every ID to the IDs that *use* it; inverting it yields the
+    dependency edges the writer follows when it expands the datablocks it is asked
+    to write.  The roots are part of the returned closure because they are written
+    too - the target scene must appear in the proven manifest, or the staged-file
+    check could never accept its own scene.
+    """
+    relations = bpy.data.user_map()
+    if not isinstance(relations, dict):
+        raise CommandError(
+            "dependency_guard_unavailable",
+            "bpy.data.user_map() returned %s instead of a mapping, so the dependency closure cannot be "
+            "proven; scene export is refused" % type(relations).__name__,
+        )
+    dependencies: dict = {}
+    for used, users in relations.items():
+        if not users:
+            continue
+        used_key = _id_key(used)
+        if used_key is None:
+            continue
+        for user in users:
+            user_key = _id_key(user)
+            if user_key is None:
+                continue
+            dependencies.setdefault(user_key, []).append(used)
+    blocks: dict = {}
+    for root in roots:
+        key = _id_key(root)
+        if key is not None:
+            blocks[key] = root
+    queue = list(blocks)
+    while queue:
+        key = queue.pop()
+        for used in dependencies.get(key, ()):
+            used_key = _id_key(used)
+            if used_key is None or used_key in blocks:
+                continue
+            blocks[used_key] = used
+            queue.append(used_key)
+    return list(blocks.values())
+
+
+def _is_linked_or_overridden(block) -> bool:
+    if getattr(block, "library", None) is not None:
+        return True
+    if bool(getattr(block, "is_library_indirect", False)):
+        return True
+    return getattr(block, "override_library", None) is not None
+
+
+def _scene_export_guard(scene) -> dict:
+    """Prove that writing ``scene`` standalone cannot pull in foreign case data.
+
+    Rejects another scene, objects/collections that are not part of this scene's
+    own hierarchy (for example a driver or Geometry Nodes reference into an old
+    case) and any linked library / override where standalone safety is uncertain.
+    """
+    lookup = _id_lookup()
+    intended_objects = {}
+    for obj in list(scene.objects) + list(scene.collection.all_objects):
+        key = _id_key(obj)
+        if key is not None:
+            intended_objects[key] = obj.name
+    own_collections = {}
+    master_key = _id_key(scene.collection)
+    if master_key is not None:
+        own_collections[master_key] = scene.collection.name
+    for collection in scene.collection.children_recursive:
+        key = _id_key(collection)
+        if key is not None:
+            own_collections[key] = collection.name
+
+    closure = _dependency_closure([scene])
+    root_key = _id_key(scene)
+    closure_keys = {_id_key(block) for block in closure}
+    problems = []
+    manifest = {}
+    for block in closure:
+        key = _id_key(block)
+        entry = lookup.get(key)
+        attribute = entry[0] if entry else "unknown"
+        name = entry[1] if entry else str(getattr(block, "name", "?"))
+        manifest["%s:%s" % (attribute, name)] = {"type": attribute, "name": name}
+        if attribute == "scenes" and key != root_key:
+            problems.append({
+                "code": "external_scene",
+                "id": "%s:%s" % (attribute, name),
+                "message": "scene %r is referenced by scene %r; a case export must stay inside one scene"
+                           % (name, scene.name),
+            })
+        elif attribute == "objects" and key not in intended_objects:
+            problems.append({
+                "code": "external_object",
+                "id": "%s:%s" % (attribute, name),
+                "message": "object %r is not part of scene %r (a driver/Geometry Nodes reference into "
+                           "another case would be written into this file)" % (name, scene.name),
+            })
+        elif attribute == "collections" and key not in own_collections:
+            problems.append({
+                "code": "external_collection",
+                "id": "%s:%s" % (attribute, name),
+                "message": "collection %r is not part of scene %r's own collection hierarchy"
+                           % (name, scene.name),
+            })
+        if _is_linked_or_overridden(block):
+            problems.append({
+                "code": "external_library",
+                "id": "%s:%s" % (attribute, name),
+                "message": "%r is linked from a library or carries a library override; standalone safety "
+                           "of the exported file is not proven" % name,
+            })
+    if problems:
+        raise CommandError(
+            "external_dependency",
+            "scene %r is not standalone: %d referenced datablock(s) are outside this scene, so the export "
+            "was refused before writing anything" % (scene.name, len(problems)),
+            details={"scene": scene.name, "problems": problems[:20], "problem_count": len(problems)},
+        )
+    if intended_objects and not any(key in closure_keys for key in intended_objects):
+        raise CommandError(
+            "dependency_guard_unavailable",
+            "bpy.data.user_map() does not report the scene's own objects as dependencies of scene %r, so "
+            "the standalone safety of this export cannot be proven; refusing to write rather than "
+            "exporting unverified data" % scene.name,
+            details={"scene": scene.name, "closure_size": len(closure), "objects": sorted(intended_objects.values())},
+        )
+    own_manifest = dict(manifest)
+    for name in intended_objects.values():
+        own_manifest.setdefault("objects:%s" % name, {"type": "objects", "name": name})
+    for name in own_collections.values():
+        own_manifest.setdefault("collections:%s" % name, {"type": "collections", "name": name})
+    # The scene's master collection is owned by the scene, not a linkable datablock
+    # of its own: it may legitimately be absent from the file's linkable metadata,
+    # so it is marked embedded instead of being hard-required.
+    embedded = set()
+    master_identifier = "collections:%s" % scene.collection.name
+    own_manifest.setdefault(master_identifier, {"type": "collections", "name": scene.collection.name})
+    own_manifest[master_identifier]["embedded"] = True
+    embedded.add(master_identifier)
+    return {
+        "scene": scene.name,
+        "objects": sorted(intended_objects.values()),
+        "collections": sorted(own_collections.values()),
+        "closure_size": len(closure),
+        "manifest": own_manifest,
+        "manifest_size": len(own_manifest),
+        "embedded": sorted(embedded),
+    }
+
+
+def _stage_path(target: Path) -> Path:
+    """An unguessable staging name in the target's own directory (same volume)."""
+    return target.parent / ("%s%s%s" % (_STAGE_PREFIX, secrets.token_hex(8), _STAGE_SUFFIX))
+
+
+def _is_own_stage(path: Path) -> bool:
+    return path.name.startswith(_STAGE_PREFIX) and path.suffix.lower() == _STAGE_SUFFIX
+
+
+def _blend_container(path: Path) -> dict:
+    """Size plus container signature of a written .blend (header sanity check)."""
+    size = int(path.stat().st_size)
+    with open(str(path), "rb") as handle:
+        head = handle.read(8)
+    if head[:7] == b"BLENDER":
+        container = "blend"
+    elif head[:2] == b"\x1f\x8b":
+        container = "gzip"
+    elif head[:4] == b"\x28\xb5\x2f\xfd":
+        container = "zstd"
+    else:
+        container = None
+    return {"bytes": size, "container": container, "magic": "".join("%02x" % byte for byte in head[:4])}
+
+
+def _write_scene_blend(scene, stage: Path, compress: bool) -> dict:
+    """Write ONE scene into the staging file with explicit, non-default arguments.
+
+    ``path_remap='ABSOLUTE'`` keeps references to files that live outside this
+    .blend (images, fonts, sounds, linked resources in the scene's closure) as
+    absolute paths, so the exported file still resolves them although it is
+    published into a different directory - and nothing is packed: this command
+    deliberately does not call ``bpy.ops.file.pack_all``, so the ``.blend`` stays a
+    reference-only export and its external assets are not copied or embedded.
+    """
+    try:
+        bpy.data.libraries.write(
+            str(stage),
+            {scene},
+            fake_user=False,
+            compress=bool(compress),
+            path_remap="ABSOLUTE",
+        )
+    except TypeError as exc:
+        raise CommandError(
+            "api_unsupported",
+            "bpy.data.libraries.write() rejected the explicit arguments (fake_user=False, "
+            "compress=%r, path_remap='ABSOLUTE'): %s; nothing was published" % (bool(compress), exc),
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise CommandError(
+            "scene_export_failed",
+            "bpy.data.libraries.write() failed for scene %r: %s" % (scene.name, exc),
+        ) from exc
+    if not stage.is_file():
+        raise CommandError(
+            "scene_export_failed",
+            "libraries.write reported success but the staged file %s does not exist" % stage.name,
+        )
+    try:
+        signature = _blend_container(stage)
+    except OSError as exc:
+        raise CommandError(
+            "scene_export_failed",
+            "cannot read the staged file %s: %s" % (stage.name, exc),
+        ) from exc
+    if signature["container"] is None:
+        raise CommandError(
+            "scene_export_failed",
+            "the staged file %s has no recognizable .blend container (magic %s); nothing was published"
+            % (stage.name, signature["magic"]),
+        )
+    if signature["bytes"] < MIN_STAGED_BLEND_BYTES:
+        raise CommandError(
+            "scene_export_failed",
+            "the staged file %s is implausibly small (%d bytes); nothing was published"
+            % (stage.name, signature["bytes"]),
+            details=signature,
+        )
+    return signature
+
+
+def _temp_blend_metadata(path: Path) -> dict:
+    """ID inventories of a .blend, read in a temporary ``bpy.data.temp_data()`` main.
+
+    ``bpy.data.temp_data`` is a context-manager *factory*
+    (``temp_data(*, filepath=None)``) that returns a temporary ``BlendData`` which
+    is freed again when the ``with`` block exits.  Reading another file's metadata
+    through it therefore never opens the file as the session file and never puts
+    its datablocks into the live ``bpy.data``; in addition nothing is ever assigned
+    to the ``data_to`` side of ``libraries.load``, so no datablock is loaded at all.
+    """
+    factory = getattr(bpy.data, "temp_data", None)
+    if not callable(factory):
+        raise CommandError(
+            "api_unsupported",
+            "bpy.data.temp_data is not a callable context-manager factory, so the file's ID inventories "
+            "cannot be read read-only",
+        )
+    try:
+        with factory() as temporary:
+            libraries = getattr(temporary, "libraries", None)
+            load = getattr(libraries, "load", None)
+            if load is None:
+                raise CommandError(
+                    "api_unsupported",
+                    "the temporary BlendData from bpy.data.temp_data() exposes no libraries.load(), so the "
+                    "file's ID inventories cannot be read read-only",
+                )
+            with load(str(path)) as (data_from, _data_to):
+                return _name_collections(data_from)
+    except CommandError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise CommandError(
+            "blend_inspect_failed",
+            "cannot read the ID inventories of %s through bpy.data.temp_data(): %s" % (path.name, exc),
+        ) from exc
+
+
+def _verify_staged(staged: dict, scene, allowed: dict) -> dict:
+    """Reject a staged file that is not exactly the one scene and its proven closure."""
+    staged_scenes = sorted(staged.get("scenes", []))
+    if staged_scenes != [scene.name]:
+        raise CommandError(
+            "staged_scene_mismatch",
+            "the staged file contains scenes %s instead of exactly [%r]; nothing was published"
+            % (staged_scenes, scene.name),
+            details={"staged_scenes": staged_scenes, "expected": [scene.name]},
+        )
+    staged_objects = sorted(staged.get("objects", []))
+    missing = sorted(set(allowed["objects"]) - set(staged_objects))
+    if missing:
+        raise CommandError(
+            "staged_objects_missing",
+            "the staged file is missing object(s) %s of scene %r; nothing was published"
+            % (missing, scene.name),
+            details={"missing": missing, "staged_objects": staged_objects},
+        )
+    unexpected_objects = sorted(set(staged_objects) - set(allowed["objects"]))
+    if unexpected_objects:
+        raise CommandError(
+            "staged_objects_unexpected",
+            "the staged file contains object(s) %s that are not part of scene %r; refusing to publish "
+            "data pulled in from elsewhere" % (unexpected_objects, scene.name),
+            details={"unexpected": unexpected_objects, "expected": allowed["objects"]},
+        )
+    proven = set(allowed["manifest"])
+    embedded_ids = set(allowed.get("embedded", ()))
+    staged_ids = {"%s:%s" % (attribute, name) for attribute, names in staged.items() for name in names}
+    unexpected = sorted(staged_ids - proven)
+    if unexpected:
+        raise CommandError(
+            "unexpected_datablock",
+            "the staged file contains %d datablock(s) that are not part of the proven dependency closure "
+            "of scene %r (first: %s); nothing was published"
+            % (len(unexpected), scene.name, ", ".join(unexpected[:5])),
+            details={"unexpected": unexpected[:20], "unexpected_count": len(unexpected)},
+        )
+    # A dependency is only accepted as missing when the metadata route cannot even
+    # expose its ID type (an embedded/inventoried-only datablock) or when it is owned
+    # by the scene itself (the master collection).  Every type the metadata route
+    # does expose must be present, so a lost node group or material is caught here.
+    exposed = set(staged)
+    lost = []
+    embedded = {}
+    unmapped = []
+    for identifier, entry in allowed["manifest"].items():
+        attribute = entry["type"]
+        name = entry["name"]
+        if identifier in embedded_ids:
+            embedded.setdefault(attribute, []).append(name)
+        elif attribute == "unknown":
+            unmapped.append(identifier)
+        elif attribute not in exposed:
+            embedded.setdefault(attribute, []).append(name)
+        elif name not in staged.get(attribute, []):
+            lost.append(identifier)
+    if lost:
+        raise CommandError(
+            "dependency_missing",
+            "the staged file does not contain %d expected dependency datablock(s) of scene %r that the "
+            "file metadata can expose (first: %s); nothing was published"
+            % (len(lost), scene.name, ", ".join(lost[:5])),
+            details={"missing_dependencies": lost[:20], "missing_count": len(lost),
+                     "staged_objects": staged_objects},
+        )
+    return {
+        "scenes": staged_scenes,
+        "objects": staged_objects,
+        "ids_written": len(staged_ids),
+        "ids_proven": len(proven),
+        "unexpected": [],
+        "missing": [],
+        "embedded": {attribute: sorted(names) for attribute, names in sorted(embedded.items())},
+        "embedded_count": sum(len(names) for names in embedded.values()),
+        "unmapped": sorted(unmapped),
+        "inventories": {attribute: names for attribute, names in staged.items() if names},
+    }
+
+
+def _live_state_fingerprint() -> dict:
+    """Everything a scene export must leave untouched."""
+    filepaths = getattr(bpy.context.preferences, "filepaths", None)
+    current = getattr(bpy.context, "scene", None)
+    return {
+        "blend_filepath": bpy.data.filepath,
+        "current_scene": current.name if current else None,
+        "window_scenes": [window.scene.name if window.scene else None for window in _window_list()],
+        "scenes": sorted(scene.name for scene in bpy.data.scenes),
+        "objects_total": len(bpy.data.objects),
+        "collections_total": len(bpy.data.collections),
+        "node_groups_total": len(bpy.data.node_groups),
+        "save_version": getattr(filepaths, "save_version", None),
+        "use_save_preview_images": getattr(filepaths, "use_save_preview_images", None),
+        "is_dirty": bool(getattr(bpy.data, "is_dirty", False)),
+    }
+
+
+def _state_delta(before: dict, after: dict) -> dict:
+    return {
+        key: {"before": before[key], "after": after[key]}
+        for key in before
+        if key != "is_dirty" and before[key] != after[key]
+    }
+
+
+def _publish_stage(stage: Path, target: Path, overwrite: bool) -> str:
+    """Publish the staged file atomically, preserving any existing target on failure.
+
+    Only atomic primitives are used.  With ``overwrite=false`` that is an exclusive
+    hard link (and, on Windows, ``os.rename``, which is also atomic and refuses an
+    existing destination); there is deliberately **no** non-atomic copy fallback,
+    because a copy that failed halfway would leave a truncated ``.blend`` under the
+    final name.  If neither primitive works the publish is refused with
+    ``publish_unsupported`` and the target is untouched.
+    """
+    if overwrite:
+        try:
+            os.replace(str(stage), str(target))
+        except OSError as exc:
+            raise CommandError(
+                "publish_failed",
+                "cannot replace %s: %s; the previous file was kept" % (target, exc),
+                details={"path": str(target)},
+            ) from exc
+        return "replace"
+    try:
+        os.link(str(stage), str(target))
+        return "exclusive_link"
+    except FileExistsError as exc:
+        raise CommandError(
+            "file_exists",
+            "%s appeared while the export was staged and overwrite=false; the existing file was kept"
+            % target,
+            details={"path": str(target)},
+        ) from exc
+    except OSError as link_error:
+        if os.name != "nt":
+            raise CommandError(
+                "publish_unsupported",
+                "this filesystem does not support an atomic no-replace publish (hard link failed: %s) and "
+                "overwrite=false forbids replacing the target, so nothing was published (a non-atomic copy "
+                "fallback is not used)" % link_error,
+                details={"path": str(target), "staged": stage.name, "os": os.name},
+            ) from link_error
+        try:
+            os.rename(str(stage), str(target))
+            return "exclusive_rename"
+        except FileExistsError as exc:
+            raise CommandError(
+                "file_exists",
+                "%s appeared while the export was staged and overwrite=false; the existing file was kept"
+                % target,
+                details={"path": str(target)},
+            ) from exc
+        except OSError as rename_error:
+            raise CommandError(
+                "publish_unsupported",
+                "this filesystem supports neither an atomic hard link (%s) nor an atomic no-replace rename "
+                "(%s), and overwrite=false forbids replacing the target, so nothing was published"
+                % (link_error, rename_error),
+                details={"path": str(target), "staged": stage.name, "os": os.name},
+            ) from rename_error
+
+
+def _cleanup_stage(stage: Path) -> None:
+    if not _is_own_stage(stage):
+        return
+    try:
+        if stage.exists():
+            stage.unlink()
+    except OSError:
+        pass
+
+
+@command("save_scene", summary="export one scene + its proven dependency closure to a new .blend")
+def _cmd_save_scene(scene: str, relative_path: str, overwrite: bool = False, compress: bool = False):
+    target = resolve_project_path(relative_path)
+    if target.suffix.lower() != ".blend":
+        raise CommandError(
+            "invalid_path",
+            "only .blend files may be exported here, got %r" % target.name,
+            details={"path": str(target)},
+        )
+    requested = str(scene or "").strip()
+    if not requested:
+        raise CommandError("invalid_argument", "scene must not be empty")
+    scene_obj = bpy.data.scenes.get(requested)
+    if scene_obj is None:
+        raise CommandError(
+            "scene_not_found",
+            "no scene named %r in this file" % requested,
+            details={"available": sorted(item.name for item in bpy.data.scenes)},
+        )
+    if not isinstance(overwrite, bool) or not isinstance(compress, bool):
+        raise CommandError("invalid_argument", "overwrite and compress must be booleans")
+    if target.exists() and not overwrite:
+        raise CommandError(
+            "file_exists",
+            "refusing to overwrite existing file without overwrite=true",
+            details={"path": str(target), "relative_path": relative_path},
+        )
+    api = _require_scene_export_api()
+    live_before = _live_state_fingerprint()
+    guard = _scene_export_guard(scene_obj)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise CommandError(
+            "publish_failed",
+            "cannot create the destination directory %s: %s" % (target.parent, exc),
+            details={"path": str(target.parent)},
+        ) from exc
+    stage = _stage_path(target)
+    try:
+        signature = _write_scene_blend(scene_obj, stage, bool(compress))
+        staged = _temp_blend_metadata(stage)
+        verdict = _verify_staged(staged, scene_obj, guard)
+        # Re-validate the destination after the staging work, then publish exclusively.
+        rechecked = resolve_project_path(relative_path)
+        if str(rechecked) != str(target):
+            raise CommandError(
+                "invalid_path",
+                "the destination resolved to %s while staging and now resolves to %s; nothing was published"
+                % (target, rechecked),
+                details={"path": str(rechecked)},
+            )
+        if not overwrite and rechecked.exists():
+            raise CommandError(
+                "file_exists",
+                "%s exists and overwrite=false; nothing was published" % rechecked,
+                details={"path": str(rechecked)},
+            )
+        # State is checked again BEFORE publishing: a verified staging file must not
+        # be published if reading/writing it already disturbed the live session.
+        publish_delta = _state_delta(live_before, _live_state_fingerprint())
+        if publish_delta:
+            raise CommandError(
+                "live_state_changed",
+                "preparing the export changed live Blender state (%s); nothing was published"
+                % ", ".join(sorted(publish_delta)),
+                details={"delta": publish_delta},
+            )
+        publish_mode = _publish_stage(stage, rechecked, bool(overwrite))
+        try:
+            published_size = rechecked.stat().st_size
+        except OSError as exc:
+            raise CommandError(
+                "publish_failed",
+                "the published file %s cannot be read back: %s" % (rechecked, exc),
+                details={"path": str(rechecked)},
+            ) from exc
+        if published_size != signature["bytes"]:
+            raise CommandError(
+                "publish_failed",
+                "the published file %s is %d bytes but the verified staging file was %d bytes, so it must "
+                "not be used" % (rechecked, published_size, signature["bytes"]),
+                details={"path": str(rechecked), "published_bytes": published_size,
+                         "staged_bytes": signature["bytes"]},
+            )
+    finally:
+        _cleanup_stage(stage)
+    live_after = _live_state_fingerprint()
+    delta = _state_delta(live_before, live_after)
+    if delta:
+        raise CommandError(
+            "live_state_changed",
+            "the export was published at %s but it changed live Blender state (%s); investigate before "
+            "trusting this session" % (target, ", ".join(sorted(delta))),
+            details={"delta": delta},
+        )
+    return {
+        "saved": True,
+        "scene": scene_obj.name,
+        "stable_id": _scene_stable_id(scene_obj),
+        "path": str(target),
+        "relative_path": os.path.relpath(str(target), str(project_dir())).replace(os.sep, "/"),
+        "bytes": signature["bytes"],
+        "container": signature["container"],
+        "compressed": bool(compress),
+        "path_remap": "ABSOLUTE",
+        "external_assets_packed": False,
+        "overwritten": bool(overwrite),
+        "publish_mode": publish_mode,
+        "staged": {"name": stage.name, "bytes": signature["bytes"], "cleaned_up": not stage.exists()},
+        "published": {"bytes": signature["bytes"], "verified": True},
+        "manifest": {
+            "scenes": verdict["scenes"],
+            "objects": verdict["objects"],
+            "collections": guard["collections"],
+            "closure_size": guard["closure_size"],
+            "ids_written": verdict["ids_written"],
+            "ids_proven": verdict["ids_proven"],
+            "unexpected": verdict["unexpected"],
+            "missing": verdict["missing"],
+            "embedded": verdict["embedded"],
+            "embedded_count": verdict["embedded_count"],
+            "unmapped": verdict["unmapped"],
+            "inventories": verdict["inventories"],
+        },
+        "api": api,
+        "live_state": {
+            "unchanged": True,
+            "blend_filepath": live_after["blend_filepath"],
+            "current_scene": live_after["current_scene"],
+            "scenes": live_after["scenes"],
+            "is_dirty": live_after["is_dirty"],
+        },
+        "blend_filepath": bpy.data.filepath,
+    }
+
+
+@command("inspect_blend_file", mutating=False, summary="read-only ID inventory of a .blend inside Project")
+def _cmd_inspect_blend_file(relative_path: str):
+    target = resolve_project_path(relative_path)
+    if target.suffix.lower() != ".blend":
+        raise CommandError(
+            "invalid_path",
+            "only .blend files can be inspected, got %r" % target.name,
+            details={"path": str(target)},
+        )
+    if not target.is_file():
+        raise CommandError(
+            "file_not_found",
+            "no file at %s" % target,
+            details={"path": str(target), "relative_path": relative_path},
+        )
+    _require_scene_export_api()
+    live_before = _live_state_fingerprint()
+    try:
+        signature = _blend_container(target)
+    except OSError as exc:
+        raise CommandError(
+            "blend_inspect_failed",
+            "cannot read %s: %s" % (target.name, exc),
+            details={"path": str(target)},
+        ) from exc
+    if signature["container"] is None:
+        raise CommandError(
+            "blend_inspect_failed",
+            "%s has no recognizable .blend container (magic %s)" % (target.name, signature["magic"]),
+            details=signature,
+        )
+    inventories = _temp_blend_metadata(target)
+    live_after = _live_state_fingerprint()
+    delta = _state_delta(live_before, live_after)
+    if delta:
+        raise CommandError(
+            "live_state_changed",
+            "inspecting %s changed live Blender state (%s); the file is never opened, so investigate"
+            % (target.name, ", ".join(sorted(delta))),
+            details={"delta": delta},
+        )
+    return {
+        "inspected": True,
+        "path": str(target),
+        "relative_path": os.path.relpath(str(target), str(project_dir())).replace(os.sep, "/"),
+        "bytes": signature["bytes"],
+        "container": signature["container"],
+        "scenes": inventories.get("scenes", []),
+        "objects": inventories.get("objects", []),
+        "libraries": inventories.get("libraries", []),
+        "id_types": sorted(inventories),
+        "counts": {attribute: len(names) for attribute, names in sorted(inventories.items())},
+        "inventories": {attribute: names for attribute, names in inventories.items() if names},
+        "opened_into_live_data": False,
+        "live_state": {
+            "unchanged": True,
+            "blend_filepath": live_after["blend_filepath"],
+            "current_scene": live_after["current_scene"],
+            "scenes": live_after["scenes"],
+        },
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -6047,6 +7271,68 @@ class BLENDERMCP_PT_panel(bpy.types.Panel):
         row.operator("blendermcp.stop_bridge", icon="PAUSE")
         layout.operator("blendermcp.status", icon="INFO")
 
+
+# Separate registration entries: native Frames have no dependency on the
+# optional extension, whose adapter only probes it inside Blender.
+def _register_node_layout_commands():
+    import sys
+    from pathlib import Path
+    directory = str(Path(__file__).resolve().parent)
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    import node_frames
+    import node_notes_adapter
+    node_frames.register_commands(sys.modules[__name__])
+    node_notes_adapter.register_commands(sys.modules[__name__])
+
+
+_register_node_layout_commands()
+
+
+def _register_file_commands():
+    """Register the isolated, named file-loading command module."""
+    import sys
+    from pathlib import Path
+    directory = str(Path(__file__).resolve().parent)
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    import file_open
+    file_open.register_commands(sys.modules[__name__])
+
+
+_register_file_commands()
+
+def _register_outliner_commands():
+    """Register Scene Collection hierarchy and membership commands separately."""
+    import sys
+    from pathlib import Path
+    directory = str(Path(__file__).resolve().parent)
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    import outliner
+    helpers = outliner.register_commands(sys.modules[__name__])
+    import outliner_management
+    outliner_management.register_commands(sys.modules[__name__], helpers)
+
+
+_register_outliner_commands()
+
+
+def _register_review_commands():
+    """Named parameter, canvas and inspection domains, running only in Blender."""
+    import sys
+    import properties
+    import geometry_nodes_edit
+    import model_inspection
+    import geometry_nodes_capture
+    import review_maintenance
+    api = sys.modules[__name__]
+    for module in (properties, geometry_nodes_edit, model_inspection, geometry_nodes_capture):
+        module.register_commands(api)
+    review_maintenance.register_commands(api)
+
+
+_register_review_commands()
 
 _CLASSES = (
     BLENDERMCP_OT_start_bridge,

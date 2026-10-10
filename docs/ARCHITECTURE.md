@@ -8,6 +8,15 @@
 
 ## 组件
 
+MCP工具层（2026-10-05用户澄清后）：完整 AuditedFastMCP 注册表包含93项实现，
+正式 SDK low-level stdio handler 始终公开并允许调用全部工具。
+域只决定按界面返回哪些工具说明和参数；查询不改变可用性，不发送列表变化通知。
+目录状态锁只保护目录阅读状态，业务调用直接进入原有审计与参数校验，不受目录锁阻挡。
+每个 stdio 进程服务一个客户端会话，目录视图独立；Blender 数据仍共享。
+未知、缺失或重复分类在初始化前拒绝；不访问 SDK 私有 ToolManager。
+profile 仅选择初始文档视图，所有配置下实际 tools/list 均93项。
+完整分类和目录 API 见 [TOOL_PROFILES.md](TOOL_PROFILES.md)。
+
 1. Codex 以标准输入/输出启动外部 MCP 服务。
 2. MCP 服务负责工具定义、参数校验和本地桥接请求。
 3. Blender 桥接组件在主线程调用 `bpy`，返回实际场景与求值结果。
@@ -46,7 +55,7 @@ MCP 项目根目录及 Git 根目录均为 `D:/AI/MCP/Blender/MCP`。源码、�
 ### 数据流
 
 ```
-Codex ──stdio──> FastMCP(AuditedFastMCP.call_tool) ──审计──> .runtime\logs\audit-mcp-<pid>-<session>.jsonl
+Codex ──stdio──> low-level动态域handler ──> FastMCP(AuditedFastMCP.call_tool) ──审计──> .runtime\logs\audit-mcp-<pid>-<session>.jsonl
                         │
                         └── TCP 桥（参数里带 _mcp_audit.request_id）──> Blender dispatch ──审计──>
                                                                         .runtime\logs\audit-bridge-<pid>-<session>.jsonl

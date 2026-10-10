@@ -692,7 +692,7 @@ class ServerToolSurfaceTests(unittest.TestCase):
 
         from blender_mcp.tools import build_server
 
-        cls.mcp = build_server()
+        cls.mcp = build_server(profile="all")
         cls.tools = {tool.name: tool for tool in asyncio.run(cls.mcp.list_tools())}
 
     def test_required_tools_present(self):

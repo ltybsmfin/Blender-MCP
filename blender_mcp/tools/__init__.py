@@ -9,7 +9,9 @@ from mcp.server.fastmcp import FastMCP
 
 from .. import audit
 from ..bridge import BridgeClient
+from ..tool_profiles import apply_tool_profile, CONTROL_TOOL_NAMES
 from . import drivers, geometry_nodes, launcher, meta, operation_log, preview, scene, shape_keys
+from . import node_frames, node_notes, file_open
 
 INSTRUCTIONS = """\
 Prefer editable Geometry Nodes for parametric modeling; inspect real sockets before linking,
@@ -23,9 +25,18 @@ expression channel (they are Blender driver expressions, not Python eval).
 
 Workflow contract
 -----------------
+0. For canvas organization, use `blender_node_frame_*` native tools. Group names and node
+   names are exact; parent/unparent preserve canvas positions and calculation links. Use
+   short Frame labels and multiline Text bodies; flow left Input -> middle Process -> right
+   Output. Do not automatically rearrange existing graphs. Optional `blender_node_note_*`
+   tools require the separate Mod extension; probe its status inside Blender first. An absent
+   extension never blocks native Frames, Geometry Nodes, shape keys or drivers.
 1. Call `blender_health` first. It returns the exact Blender version, the loaded .blend, the scene
-   and the command list. If it fails, no bridge is running: start Blender with `blender_launch_blender`
-   (or run `MCP/blender/bootstrap.py` inside an open Blender) before retrying.
+   and the command list. If it fails, use `blender_bridge_probe` to distinguish connection refusal,
+   authentication, response timeout and protocol errors. Launch with `blender_launch_blender` only
+   when no Blender and no listener exist; it checks this and refuses duplicates. An already-open
+   Blender needs its bootstrap/bridge panel enabled by the user. Never change ports or tokens to
+   hide a failed health check.
 2. Prefer **procedural geometry nodes** over destructive edits. Keep existing modifiers intact;
    adding a Geometry Nodes modifier is additive, and parameters stay editable.
 3. **Inspect before you link.** Node socket display names are localized and version dependent;
@@ -54,6 +65,18 @@ Workflow contract
 8. Saving is restricted to `<workspace>/Project`. Absolute paths, `..` escapes and symlink/junction
    components are rejected. `blender_save_blend` refuses to overwrite unless `overwrite=true`.
    Previews are written only to `<workspace>/Project/previews/*.png`.
+   For one case per file, create a fresh empty scene with `blender_create_case_scene`, model with
+   globally unique case-prefixed object/group names, then use `blender_save_scene` and
+   `blender_inspect_blend_file`. Scene export includes only the target scene and proven dependencies;
+   foreign scene/object/collection references are refused. The old `blender_save_blend` still saves
+   the entire loaded file. Use `blender_switch_scene` to return to the original scene without deleting
+   any case or user scene. Scene separation does not protect explicitly named shared datablocks from
+   edits: never replace/reuse another case's node group or object while building a new case.
+   To load an existing project into this instance, use blender_open_blend with a normalized absolute
+   .blend path inside Project and explicit confirm_replace_current=true. It replaces the loaded
+   session; it never saves it automatically. load_ui=false keeps the layout, scripts are always
+   disabled, and success requires a verified filepath and healthy bridge. inspect_blend_file only
+   inspects metadata and never opens a file. Do not blindly replay an open after a transport error.
 9. Paths, topology, socket compatibility and driver data paths are validated before mutation; a
    failure is reported as a tool error (isError) with a machine-readable code, never as a success
    payload containing "error".
@@ -70,10 +93,9 @@ MAX_AUDITED_STEPS = 40
 class AuditedFastMCP(FastMCP):
     """FastMCP with an audit record around every tool call.
 
-    ``FastMCP._setup_handlers`` binds ``self.call_tool``, so overriding it here
-    captures *every* call - including the ones that fail argument validation
-    inside the SDK, before a single line of tool code runs. That is the only place
-    where a schema rejection can still be observed.
+    The formal dynamic handler delegates every invocation to this public
+    ``call_tool`` method, including directory errors and SDK argument-validation
+    failures, before any Blender business code runs.
     """
 
     async def call_tool(self, name: str, arguments: dict[str, Any]):
@@ -89,6 +111,8 @@ class AuditedFastMCP(FastMCP):
             try:
                 result = await super().call_tool(name, arguments)
             except Exception as exc:  # noqa: BLE001 - re-raised unchanged
+                from ..dynamic_domains import error_mapping
+                domain_failure = error_mapping(exc)
                 duration = round((time.perf_counter() - started) * 1000.0, 3)
                 extra = _batch_audit(log, request_id, name, _error_payload(exc))
                 log.record(
@@ -99,7 +123,7 @@ class AuditedFastMCP(FastMCP):
                     ok=False,
                     duration_ms=duration,
                     error_type=type(exc).__name__,
-                    code=getattr(exc, "code", None),
+                    code=domain_failure["code"] if domain_failure else getattr(exc, "code", None),
                     message=str(exc),
                     **extra,
                 )
@@ -195,16 +219,29 @@ def _batch_audit(log: audit.AuditLog, request_id: str, name: str, result) -> dic
     }
 
 
-def build_server(bridge: BridgeClient | None = None, name: str = "blender") -> FastMCP:
-    """Create the FastMCP app with every tool registered."""
+def build_server(bridge: BridgeClient | None = None, name: str = "blender", profile=None):
+    """Register every business tool once, then select an initial directory view.
+
+    Every tool is permanently listed and callable. Domain views only browse
+    interface-specific documentation and never modify business permissions.
+    """
+    from .domains import REGISTRATIONS
+    from ..dynamic_domains import DomainController, DynamicDomainServer, register_control_tools
     client = audit.instrument_bridge(bridge or BridgeClient())
-    mcp = AuditedFastMCP(name=name, instructions=INSTRUCTIONS)
-    meta.register(mcp, client)
-    scene.register(mcp, client)
-    geometry_nodes.register(mcp, client)
-    shape_keys.register(mcp, client)
-    drivers.register(mcp, client)
-    launcher.register(mcp, client)
-    preview.register(mcp, client)
-    operation_log.register(mcp, client)
-    return mcp
+    instructions = (
+        "ALL registered tools are always available, regardless of profile or selected directory. "
+        "Use blender_tool_domains(domains=[\"geometry_nodes\"]) to read only that interface's tool descriptions "
+        "and parameter schemas. blender_set_tool_domains changes only the documentation view with "
+        "replace/add/remove; it never activates, deactivates or hides tools. No client refresh or Blender restart "
+        "is needed to browse another interface.\n"
+        + INSTRUCTIONS
+    )
+    registry = AuditedFastMCP(name=name, instructions=instructions)
+    registered_names = set()
+    for register_domain in REGISTRATIONS:
+        register_domain(registry, client, registered_names)
+    controller = DomainController(registry, registered_names | CONTROL_TOOL_NAMES)
+    server = DynamicDomainServer(registry, controller, name, instructions)
+    register_control_tools(registry, controller)
+    server.tool_profile = apply_tool_profile(server, profile, registered_names | CONTROL_TOOL_NAMES)
+    return server

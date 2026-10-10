@@ -72,7 +72,10 @@ def register(mcp: FastMCP, bridge: BridgeClient) -> None:
         description=(
             "Create a mesh object from explicit vertex/face data (no operators, no interactive context). "
             "Faces must reference valid vertex indices; n-gons are allowed. Use this when you need "
-            "exactly controlled topology - for example a mesh that will receive shape keys."
+            "exactly controlled topology - for example a mesh that will receive shape keys. The object is "
+            "linked into the ACTIVE scene's own collection hierarchy only: a 'collection' that belongs to "
+            "another scene is refused (collection_outside_scene) and so is one that is shared with another "
+            "scene (collection_shared_across_scenes), so case work cannot modify pre-existing scenes."
         ),
     )
     def blender_create_mesh_object(
@@ -187,6 +190,130 @@ def register(mcp: FastMCP, bridge: BridgeClient) -> None:
             "save_blend",
             {"relative_path": relative_path, "overwrite": overwrite, "compress": compress},
         )
+
+    @mcp.tool(
+        name="blender_create_case_scene",
+        description=(
+            "Create a NEW, genuinely empty scene for isolated case work: no objects, no collections, no "
+            "world are copied from any existing scene, and nothing else in the file is modified. The name "
+            "must be globally unique - an existing name is an error and is NEVER auto-suffixed (an "
+            "accidental 'Case.001' would silently split case data). With activate=true the scene is made "
+            "the active scene through an explicit, verified window.scene assignment; if the switch cannot "
+            "be proven (no window, or bpy.context.scene does not follow) it is rolled back, the new scene "
+            "is removed and an error is returned instead of a fake success. Returns the previous/current "
+            "scene, the stable scene id, emptiness counts and proof that pre-existing scenes are "
+            "unchanged. Use globally unique, prefixed names for everything you create inside a case scene "
+            "(see docs/SCENE_ISOLATION.md) - the isolation is not a sandbox for the older named-data tools."
+        ),
+    )
+    def blender_create_case_scene(name: str, activate: bool = True) -> dict:
+        if not str(name or "").strip():
+            raise ToolError("invalid_argument: name must not be empty")
+        return call(bridge, "create_case_scene", {"name": name, "activate": activate})
+
+    @mcp.tool(
+        name="blender_switch_scene",
+        description=(
+            "Activate an existing scene in the GUI window. The switch is explicit (window.scene = scene) "
+            "and verified: the window is read back and bpy.context.scene must follow, otherwise the "
+            "previous scene is restored and an error is returned. Read-only for scene data - no object, "
+            "collection, world or camera is changed."
+        ),
+    )
+    def blender_switch_scene(name: str) -> dict:
+        if not str(name or "").strip():
+            raise ToolError("invalid_argument: name must not be empty")
+        return call(bridge, "switch_scene", {"name": name})
+
+    @mcp.tool(
+        name="blender_list_scenes",
+        description=(
+            "Scene inventory: name, stable session id, whether it is the current scene, object count, "
+            "collection count, world, frame range and which GUI windows show it. With include_objects=true "
+            "it also returns the exact object names per scene, which is how you verify that another scene "
+            "was not touched."
+        ),
+    )
+    def blender_list_scenes(include_objects: bool = False) -> dict:
+        return call(bridge, "list_scenes", {"include_objects": include_objects})
+
+    @mcp.tool(
+        name="blender_save_scene",
+        description=(
+            "Export ONE scene (plus its mandatory dependency closure) to <workspace>/Project/<relative_path> "
+            "as a standalone .blend, WITHOUT saving the live main file. Unlike blender_save_blend this never "
+            "calls save_as_mainfile: the scene is written with bpy.data.libraries.write({scene}, "
+            "fake_user=false, path_remap='ABSOLUTE', compress=...), staged under an unguessable name in the "
+            "target directory, verified read-only through a temporary bpy.data.temp_data() main, and only "
+            "then published with an atomic no-replace primitive (no non-atomic copy fallback exists). "
+            "External assets are NOT packed: the file keeps absolute paths to images/fonts/sounds that live "
+            "elsewhere on disk, so it is a reference-only export, not a self-contained one. Before writing, "
+            "the dependency closure of the scene is checked: another scene, objects/collections outside this "
+            "scene (a driver or Geometry Nodes reference into an old case) or linked/overridden data make the "
+            "export fail with external_dependency. The staged file must contain exactly the target scene, "
+            "exactly the intended object inventory and every dependency whose ID type the file metadata can "
+            "expose (a lost node group or material is dependency_missing); only scene-owned or "
+            "non-linkable/embedded datablocks may be absent, and they are reported. The path must stay inside "
+            "Project (validated here and again inside Blender), must end in .blend, and overwrite defaults to "
+            "false; the previous file survives any failure. The main file path, the current scene, the "
+            "context and the preferences are unchanged."
+        ),
+    )
+    def blender_save_scene(
+        scene: str,
+        relative_path: str,
+        overwrite: bool = False,
+        compress: bool = False,
+    ) -> dict:
+        if not str(scene or "").strip():
+            raise ToolError("invalid_argument: scene must not be empty")
+        # Fail early on an unsafe path so a bad request never reaches Blender; the
+        # Blender side validates the same path again before anything is written.
+        try:
+            resolved = config.resolve_project_path(relative_path)
+        except config.PathValidationError as exc:
+            raise ToolError("invalid_path: %s (path=%r)" % (exc, relative_path)) from exc
+        if resolved.suffix.lower() != ".blend":
+            raise ToolError(
+                "invalid_path: only .blend files may be exported, got %r" % resolved.name
+            )
+        if not overwrite and resolved.exists():
+            raise ToolError(
+                "file_exists: %s already exists and overwrite=false; pass overwrite=true to replace it "
+                "(nothing was written)" % resolved
+            )
+        return call(
+            bridge,
+            "save_scene",
+            {
+                "scene": scene,
+                "relative_path": relative_path,
+                "overwrite": overwrite,
+                "compress": compress,
+            },
+        )
+
+    @mcp.tool(
+        name="blender_inspect_blend_file",
+        description=(
+            "Read-only inventory of a .blend inside <workspace>/Project: scenes, objects and the linkable ID-type "
+            "collections exposed by Blender library metadata (meshes, node groups, materials, actions, libraries, ...). "
+            "Embedded/non-linkable data such as mesh-owned shape keys are not individually enumerated. The "
+            "file is read through bpy.data.temp_data metadata only - it is never opened, appended or "
+            "loaded into the live bpy.data, and the live file path/current scene are unchanged. Use it to "
+            "verify an exported case file without touching the running session."
+        ),
+    )
+    def blender_inspect_blend_file(relative_path: str) -> dict:
+        try:
+            resolved = config.resolve_project_path(relative_path)
+        except config.PathValidationError as exc:
+            raise ToolError("invalid_path: %s (path=%r)" % (exc, relative_path)) from exc
+        if resolved.suffix.lower() != ".blend":
+            raise ToolError(
+                "invalid_path: only .blend files can be inspected, got %r" % resolved.name
+            )
+        return call(bridge, "inspect_blend_file", {"relative_path": relative_path})
 
     @mcp.tool(
         name="blender_set_frame",

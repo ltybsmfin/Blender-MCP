@@ -71,6 +71,22 @@ if (-not $SkipUnit) {
     $summary += [pscustomobject]@{ suite = 'unit'; exit = $LASTEXITCODE }
     & $Python (Join-Path $TestsDir 'test_review_transport.py')
     $summary += [pscustomobject]@{ suite = 'transport_review'; exit = $LASTEXITCODE }
+    Push-Location $MCPDir
+    try {
+        & $Python -m unittest tests.test_outliner tests.test_outliner_management tests.test_file_bootstrap tests.test_file_open tests.test_node_frames tests.test_connection_startup tests.test_tool_profiles
+        $summary += [pscustomobject]@{ suite = 'outliner_profiles_regression'; exit = $LASTEXITCODE }
+        & $Python -m unittest tests.test_dynamic_domains_stdio
+        $summary += [pscustomobject]@{ suite = 'dynamic_domains_stdio_notifications'; exit = $LASTEXITCODE }
+        & $Python -m unittest tests.test_properties tests.test_properties_modes tests.test_geometry_nodes_edit tests.test_geometry_nodes_edit_safety tests.test_geometry_nodes_capture tests.test_geometry_nodes_capture_safety tests.test_model_inspection tests.test_review_maintenance tests.test_interface_defaults
+        $summary += [pscustomobject]@{ suite = 'algorithm_review_regression'; exit = $LASTEXITCODE }
+    } finally { Pop-Location }
+    # Official MCP protocol verification; starts stdio servers, no Blender.
+    & $Python (Join-Path $TestsDir 'test_outliner_profiles_integration.py')
+    $summary += [pscustomobject]@{ suite = 'outliner_profiles_stdio'; exit = $LASTEXITCODE }
+    & $Python (Join-Path $TestsDir 'test_algorithm_review_profiles.py')
+    $summary += [pscustomobject]@{ suite = 'algorithm_review_profiles_stdio'; exit = $LASTEXITCODE }
+    # test_outliner_live_acceptance.py is intentionally manual: it requires a
+    # refreshed, already-running bridge and creates only unsaved fixture data.
 }
 
 if (-not $SkipFeature) {

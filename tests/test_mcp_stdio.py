@@ -115,6 +115,9 @@ def result_text(call_result) -> str:
 
 def env_for_server(**overrides) -> dict:
     env = dict(os.environ)
+    env.pop("BLENDER_MCP_LOCAL_DOMAINS", None)
+    env.pop("BLENDER_MCP_VIEW_DOMAINS", None)
+    env["BLENDER_MCP_PROFILE"] = "all"  # full business integration, independent of the new default
     env["BLENDER_MCP_PORT"] = str(TEST_PORT)
     env["BLENDER_MCP_TIMEOUT"] = "60"
     env.update({k: str(v) for k, v in overrides.items()})

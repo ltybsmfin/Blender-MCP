@@ -2,13 +2,26 @@
 
 > 架构约定见 `docs/ARCHITECTURE.md`，实测证据见 `tests/reports/TEST_REPORT.md`，开发日志见 `docs/DEVELOPMENT_LOG.md`。
 
+全部 **93项工具常驻注册、可见且可调用**。域用于按 Blender 界面浏览工具说明和参数，不影响其他工具的可用性。
+例如调用 `blender_tool_domains(domains=["geometry_nodes"])` 查看几何节点目录，
+或指定 `["outliner"]` 查看集合和对象管理工具。切换阅读目录无需重连。
+完整说明见 [工具目录](docs/TOOL_PROFILES.md)，验证见 [本次验收](docs/TOOL_DIRECTORY_ACCEPTANCE.md)。
+
+参数化检查增强见 [使用方法](docs/ALGORITHM_REVIEW.md) 和
+[验收状态](docs/ALGORITHM_REVIEW_ACCEPTANCE_STATUS.md)：Properties 实例参数、求值检查、
+真实视口/节点编辑器截图、原生 Reroute 整理。`algorithm_review` 只指定GN+Properties+模型检查的初始阅读目录（26项文档），实际工具始终全部93项可用。
+维护命令 `blender_reload_review_bridge` 只刷新固定检查模块，首次需运行磁盘 bootstrap
+或由 `blender_launch_blender` 自动装入；不会保存或替换工程。该命令常驻global。
+已在实际 Blender 5.2.1 LTS 验证实例参数/Field/菜单、真实视口与节点图 ImageContent、
+Frame/Reroute 布线及几何等价；测试只使用 `Project/MCP验收` 专用夹具，原算法总工程文件哈希不变。
+
 在 **已运行的 Blender** 与 **Codex（MCP stdio 客户端）** 之间架一座本地、带令牌鉴权的桥。
 主线是**几何节点参数化建模**、**形态键（Shape Keys）**、**驱动器（Drivers）**；
 本版新增**每次操作的持久审计日志 + 实时看板**、**事务化批量图编辑**与**模型截图预览**。
 
 **用户操作约定：不使用 computer-use / 桌面自动化控制或验收 Blender。** 建模、查询和模型预览通过 MCP 与 Blender API 完成；截图由 `blender_capture_preview` 生成，不需要截取桌面。
 
-- MCP 服务端：官方 Python MCP SDK **1.30.0**（已固定版本）+ FastMCP stdio，**42 个工具**。
+- MCP 服务端：官方 Python MCP SDK **1.30.0**（已固定版本），正式low-level stdio handler包裹完整AuditedFastMCP业务注册表。既有90项定义保持兼容，新增3项常驻域管理工具；目录查询与固定93项清单证据见 `docs/TOOL_DIRECTORY_ACCEPTANCE.md`。
 - `blender_present_object`：在 GUI 视口选择、隔离并框选对象，保留视角；可请求激活当前 Blender 自身窗口，不模拟鼠标/键盘。GUI 选择、隔离、取景已在本机 5.2.1 验证。前台激活受 Windows 限制，响应如实报告是否成功。用户当前要求 Blender 在后台运行，后续调用保持 `foreground=false`，除非用户再次明确请求置前。
 - Blender 侧：单文件插件/桥接脚本，**只用 Blender 自带标准库 + `bpy`**，不需要在 Blender 里安装 `mcp`。
 - 传输：`127.0.0.1:9876` 上的 IPv4 TCP，逐行 JSON（`\n` 分帧），令牌写在 `MCP/.runtime/token`（两侧读取，**永不打印**）。
@@ -142,7 +155,7 @@ bootstrap 参数（放在 `--` 之后）：`--mcp-host`、`--mcp-port`、`--mcp-
 
 本机已实际安装并启用 **Blender MCP** 本地插件，标识为 `blender-mcp@blender-local`，由它提供 `blender` 服务。
 插件源文件位于 `MCP/codex-marketplace/`，没有放在工作区根目录。安装与验证见 [Codex 插件接入](docs/CODEX_PLUGIN.md)。
-Codex 插件库存已确认 `installed=true`、`enabled=true`；其 app-server 已初始化服务并发现 42 个工具。
+Codex 插件库存已确认 `installed=true`、`enabled=true`；global-only只选初始通用文档视图，实际提供全部93项常驻工具。历史42/90/20/25项清单不代表当前完整清单。
 已打开的桌面应用和聊天仍需要重新加载后确认原生工具调用，不能将独立 SDK 连通等同于当前会话接入成功。
 
 **推荐：安装本地插件**（与本机相同方式）：
@@ -179,13 +192,27 @@ codex mcp add blender --env "BLENDER_MCP_BLENDER=D:\AI\MCP\Blender\Version\5_2_1
 D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\server.py
 ```
 
-连接顺序建议：先 `blender_health`；失败就 `blender_launch_blender`（或手工按 §4 启动 Blender）后重试。
+连接顺序建议：先 `blender_health`；失败后用 `blender_bridge_probe` 区分连接、鉴权、超时和协议错误。
+仅在无 Blender 进程、无端口监听时调用 `blender_launch_blender`。已打开但未开桥的 Blender 需要用户启用
+bootstrap/Bridge 面板；启动工具会拒绝再开一个实例。详细证据、错误分类和重连步骤见
+[连接诊断](docs/CONNECTION_DIAGNOSIS.md)。
 
-一个桥接端口连接一个 Blender 实例。健康桥会优先复用；切换版本前关闭原桥，或配置另一端口。
+一个桥接端口连接一个 Blender 实例。健康桥会优先复用；本项目保持 `127.0.0.1:9876`。
+不要以更换端口、替换 token 或重复启动来掩盖连接失败。
 
 ---
 
-## 6. 工具清单（41 个）
+## 6. 既有工具说明（完整93项分类见 TOOL_PROFILES）
+
+下列业务说明保留原接口语义；全部工具常驻可用，可按界面查看说明。工具名与分类归属见
+[完整分类表](docs/TOOL_PROFILES.md#完整互斥工具分类表)。常驻控制工具为
+`blender_tool_domains`、`blender_tool_domain_state`、`blender_set_tool_domains`。
+
+新增 7 个原生 `blender_node_frame_*` 工具（创建、查询、归组、解除归组、属性、Text 正文、布局摘要）与 6 个可选 `blender_node_note_*` 工具（状态、固定本地扩展启用、创建、查询、更新、删除）。原生 Frame 能力不依赖扩展；旧 47 个工具 schema 保持兼容。参数、安全边界和验证见 [Frame 与节点注释](docs/NODE_FRAMES_AND_NOTES.md)。
+
+`blender_open_blend(path, confirm_replace_current=false, load_ui=false)` 把 Project 内现有 `.blend` 加载到当前 Blender。`path` 为规范化绝对路径，始终需要明确确认替换当前工程；不自动保存、不改写目标、不另开 Blender，工程脚本自动执行始终关闭。成功前验证当前文件路径与 bridge 健康状态；只读 `blender_inspect_blend_file` 仍不加载工程。调用流程、错误和限制见 [打开现有工程](docs/OPEN_BLEND.md)。新 schema 需要客户端重新读取工具列表。
+
+独立注释扩展源于 `Mod/blender_mcp_node_notes/repository/blender_mcp_node_notes`，本地加载目录与 [扩展说明](../Mod/blender_mcp_node_notes/README.md)一致；不复制到 MCP 或 Version。节点编辑器侧栏为 **MCP Notes**，正文使用原生 Frame/Text，存入 .blend。多行在现有 Text Editor 编辑，MCP 可非交互更新。Codex 已打开的服务需要重新加载工具清单后显示新增工具。
 
 所有错误都是 **MCP 错误（`isError=true`）**，附带机器可读的 `code`，不会用"成功值里带 error"的方式蒙混。
 
@@ -196,7 +223,7 @@ D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\server.py
 | `blender_server_status` | 桥计数器：客户端数、成功/失败/未授权次数、最后一个错误 |
 | `blender_list_commands` | Blender 侧底层命令清单（核对插件版本） |
 | `blender_ping` | 最省的一次往返 |
-| `blender_bridge_probe` | 不抛异常的连通性探测（reachable + health/hint） |
+| `blender_bridge_probe` | 不抛异常的连通性探测（reachable + stage/error_code/error/hint 或 health） |
 | `blender_environment` | 服务端 venv、workspace、Project 根、token 是否存在、桥地址、超时、bootstrap 路径 |
 
 ### 6.2 场景/对象（9）
@@ -204,6 +231,26 @@ D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe D:\AI\MCP\Blender\MCP\server.py
 世界包围盒、mesh signature、修改器与 GN 参数、形态键、驱动器、自定义属性）、`blender_create_mesh_object`、
 `blender_create_primitive`、`blender_set_custom_property`（object/scene，set/get/remove，被驱动时会警告）、
 `blender_save_blend`、`blender_set_frame`、`blender_update_depsgraph`。
+
+另有 `blender_present_object`（选择/取景，可按明确请求将 Blender 自身窗口置前）及以下 5 个案例场景工具：
+
+| 工具 | 参数与用途 |
+| --- | --- |
+| `blender_create_case_scene` | `name, activate=true`：新增并切换到空场景，保留原场景 |
+| `blender_switch_scene` | `name`：切换已有场景并确认后续工具使用正确上下文 |
+| `blender_list_scenes` | `include_objects=false`：各场景及对象清单 |
+| `blender_save_scene` | `scene, relative_path, overwrite=false, compress=false`：独立导出目标场景及必要依赖 |
+| `blender_inspect_blend_file` | `relative_path`：只读检查导出文件的数据块清单，不打开或追加到当前工程 |
+| `blender_open_blend` | `path, confirm_replace_current=false, load_ui=false`：确认后打开 Project 内现有工程；脚本关闭，加载后核验连接 |
+
+逐案例流程：`create_case_scene` → 使用案例前缀创建对象/节点组 → `save_scene` → `inspect_blend_file`。
+保存路径相对于 **`D:\AI\MCP\Blender\Project`**，例如
+`算法复现/00_算法基础/案例名/案例名.blend`；列表/数据树分别放在 `01_列表` / `02_数据树`。
+下一案例重新创建空场景；需要回到原场景时调用 `switch_scene`，不删除任何场景。
+
+`save_blend` 仍保存整个已加载文件；案例独立保存使用 `save_scene`。场景之间共用同一全局数据块库，
+不要用 `replace` 或旧名称编辑其它案例的节点组/对象。导出检查会拒绝引用外部场景、对象或集合的混合工程。
+详见 [场景隔离与独立保存](docs/SCENE_ISOLATION.md)。
 
 ### 6.3 几何节点（13，主线）
 `blender_create_node_group`（类型化接口：名称/类型/默认值/范围/子类型）、`blender_create_node`、
@@ -274,6 +321,8 @@ owner 支持 `object` / `shape_keys` / `node_group` / `scene`；变量仅支持 
 ## 8. 端到端示例（几何节点 → 参数 → 形态键 → 驱动器 → 保存）
 
 ```text
+0) blender_set_tool_domains(mode="replace", domains=["geometry_nodes","object_modeling","shape_keys","drivers"])
+   → 客户端收到列表变化通知后重新查询工具清单
 1) blender_health                                  → 确认 Blender 5.2.1 在跑
 2) blender_describe_node_type("GeometryNodeMeshGrid")
                                                    → 拿到真实 socket：Size X / Vertices X / Vertices Y ...
@@ -383,13 +432,13 @@ Codex ──stdio(JSON-RPC/MCP)──> MCP/server.py ──TCP 127.0.0.1:9876(�
 
 | 现象 | 处理 |
 | --- | --- |
-| 工具报 `bridge_unavailable` | Blender 没开桥：按 §4 启动，或调用 `blender_launch_blender` |
+| 工具报 `bridge_unavailable` | 先 `blender_bridge_probe`；无进程/监听才启动，已有 Blender 则由用户启用 bootstrap |
 | 报 `unauthorized` | 两侧 token 不一致：确认都用 `MCP\.runtime\token`（`--mcp-token-file` 要一致） |
 | 报 `frame_too_large` | 请求过大：`create_mesh_object` 的顶点/面分批传 |
 | 改了 GN 参数但几何没变 | 用带 `evaluated`/`signature` 的返回判断；若属性被**驱动器**接管会返回 `driven: true` |
 | 形态键值写不进去 | 该 key 被驱动器驱动（`driven: true`）→ 改驱动器输入（如自定义属性）而不是硬写 |
 | 保存时多出 `.blend1` | 本版本会在保存期间关闭版本备份；若你手动在 Blender 里保存则仍可能出现 |
-| 端口被占用 | `bind_failed`：换 `--mcp-port`，或复用已在跑的那个桥 |
+| 端口被占用 | 复用健康桥；不健康时检查监听者和日志，启动保护返回 `port_in_use`，保持原端口 |
 | 保存时报 `image.write ERROR ... thumbnails` | 无害：Blender 想往系统缩略图缓存写预览图，被受限环境拒绝；**.blend 已保存成功**，`use_save_preview_images` 已在保存期间关闭 |
 | 无头模式下桥不响应 | 忘了 `-- --mcp-pump`（`--background` 不会跑 timers） |
 | `capture_preview` 报 `viewport_unavailable` | 无头（`--background`）没有 OpenGL 视口：改 `mode="render"` 或 `mode="auto"` |
@@ -402,11 +451,20 @@ Codex ──stdio(JSON-RPC/MCP)──> MCP/server.py ──TCP 127.0.0.1:9876(�
 
 ## 12. 测试
 
-最终完整验收：**8 套测试、371 项检查全部通过**（58 + 7 + 30 + 49 + 41 + 64 + 85 + 37），
+动态域改造的测试与Codex客户端验证边界见 [DYNAMIC_DOMAINS_ACCEPTANCE](docs/DYNAMIC_DOMAINS_ACCEPTANCE.md)。
+`python -m unittest tests.test_dynamic_domains tests.test_dynamic_domains_stdio` 不启动Blender，
+验证默认、完整分类、原90项定义、动态组合、拒绝调用、回滚、正式通知与独立stdio客户端隔离。
+以下371项及实机模型记录是历史业务基线，不作为本次通知刷新验收的替代证据。
+
+原版本基线验收：**8 套测试、371 项检查全部通过**（58 + 7 + 30 + 49 + 41 + 64 + 85 + 37），
 包含真实 Blender 5.2.1 LTS 与官方 MCP SDK stdio 联调。另在实际 GUI Blender 中通过 MCP 验证了
 960×720 视口截图和相机渲染：均返回原生图片内容，截图后选中集、活动对象、视角、帧、场景参数与数据块数量一致。
 早期受限构建环境的失败保留在测试报告历史部分，最终正常账户完整测试已通过。
 几何节点组复用、对象/材质等指针参数的 JSON 引用格式见 `docs/GN_REFERENCES.md`。
+
+2026-10-04 启动与案例隔离修补另经 **16 项启动回归、22 项场景单元/schema、74 项真实 MCP 检查和
+8 项完整工作流核对**验证。未重复全量重型套件；新验收命令与范围见 `docs/CONNECTION_DIAGNOSIS.md` 和
+`docs/SCENE_ISOLATION.md`。原生 Codex health/ping/list_commands 均成功，原有 4 个模型文件哈希未变。
 
 ```powershell
 # 1) 单元/协议（不需要 Blender）
@@ -505,3 +563,64 @@ blender_batch_graph_edit(group="Panel", operations=[...], transactional=False,
   **修改器输入无法还原**（`modifier_inputs_lost`）、**旧数据块无法删除**（`transaction_failed`）四种情况都会
   反向重定向、恢复 `use_fake_user`、还原名称、删除草稿；成功/失败都不会留下 `.__mcp_` 数据块。
 - 链接库节点组会被拒绝（`unsafe_linked_group`），因为它们不允许就地编辑。
+
+## 14. Outliner：集合与普通场景对象
+
+面向 Outliner 的 Collection 和 Object 管理使用独立具名工具。截图里的橙色网格条目是
+Mesh Object，不默认表示 Collection Instance。参数始终使用精确场景名；集合路径从
+`Scene.collection` 起算，`算法复现/00_算法基础/案例01_两数相加` 表示三级集合，
+`""` 表示已有场景根，不能用来创建/删除/重命名场景根。
+
+新增接口分为两个独立注册模块，参数/错误与上限详见
+[基础组织操作](docs/OUTLINER.md)、[集合与对象管理](docs/OUTLINER_MANAGEMENT.md)。
+实测状态单独记录在 [Outliner 验收状态](docs/OUTLINER_ACCEPTANCE_STATUS.md)，
+源码中有接口不代表当前 Blender 已加载，开始前核对 health 和桥命令清单。
+
+| 工具（均以 `blender_outliner_` 开头） | 主要参数与行为 |
+| --- | --- |
+| `hierarchy` | `scene, include_memberships=true`：直属父子、场景内各路径、直属对象及全局成员关系；DAG 不假设唯一父 |
+| `ensure_path` | `scene, path, create_missing=true`：完整路径先校验再创建；重复调用复用，不接受 `.001` 自动后缀 |
+| `link_objects` | `scene, path, objects`：仅增加成员关系，保留其它集合归属；已链接时跳过 |
+| `move_objects` | `scene, path, objects, unlink_from`：目标先链接，只解除显式来源；来源 `[]` 表示仅链接，`[""]` 才明确移出场景根 |
+| `unlink_objects` | `scene, path, objects, confirm_orphan=false`：解除关系，不删除 Object；最后场景/集合归属默认拒绝 |
+| `set_visibility` | `scene, path, hide_viewport=null, hide_render=null`：设置集合全局禁用视口/渲染标志，null 保留 |
+| `collection_create` | `scene, parent_path, name`：在指定父集合创建或复用同位置集合，全局同名异位置拒绝 |
+| `collection_rename` | `scene, path, name`：仅改集合名称，不自动改对象/GN 名称；全局冲突拒绝 |
+| `collection_move` | `scene, path, parent_path`：重挂父集合，保留集合内容；根、多父/共享写入和循环父子关系拒绝 |
+| `collection_delete` | `scene, path, confirm_delete, recursive=false`：明确确认后删除集合，默认有子集合拒绝；递归仅覆盖指定子树，保留所有对象/网格/GN，必要时对象重链至场景根 |
+| `object_create` | `scene, path, name, type=MESH, vertices=null, faces=null`：精确创建网格宿主或 Empty；默认空网格供 GN 建模，显式场景避免误入当前案例 |
+| `object_rename` | `scene, object, name`：仅改 Object 名称，保留网格数据和修改器/GN 引用 |
+| `object_delete` | `scene, objects, confirm_delete`：仅删除明确对象，保留其网格/材质/GN 数据；共享场景、链接库与外部依赖默认拒绝 |
+| `collection_display` | `scene, path, view_layer, hidden=null, disable_viewport=null, hide_render=null, exclude=null`：分别控制眼睛、监视器、相机和图层排除 |
+| `object_display` | `scene, objects, view_layer, hidden=null, disable_viewport=null, hide_render=null`：批量控制普通对象的三个显示开关，整批先验证 |
+
+`hidden=true/false` 对应指定视图层的小眼睛隐藏/显示；`disable_viewport=true/false`
+对应全局禁用/恢复视口；`hide_render=true/false` 对应禁止/恢复渲染。null 保持现状，
+全部 null 拒绝。恢复一个标志仍遵循父集合和图层的其它限制。
+
+Object 的多集合归属与 Collection 的多父/跨场景共享都显式报告；关系不明确时拒绝写入，
+不猜测目标。对象批量校验失败不做部分写入；实际写入异常报告补偿结果。永久删除无法
+保证回滚，返回已删项与残留项，不能把部分删除报告为事务成功。删除不会自动清除孤立数据。
+GN 组是全局数据块，集合只组织其宿主 Object；不会把 GN 组声称为 Collection 成员。
+
+### 14.1 按界面查看工具目录
+
+Outliner的15项工具归于`outliner`分类。全部93项工具始终注册、可见、可调用。
+使用`blender_tool_domains(domains=["outliner"])`查看它们的说明和参数；
+查看GN、Frame、Properties或模型检查时可指定其他分类或组合，查询不改变工具可用性。
+可选的`blender_set_tool_domains`仅保留阅读视图，replace+[]恢复通用目录。
+不发送列表变化通知，也不根据编辑器焦点自动改变阅读目录。
+
+`BLENDER_MCP_PROFILE`现在仅定义初始阅读目录：global-only/core默认查看通用文档，all查看全目录；
+所有profile仍提供全部93项工具。Outliner模板仅指定初始文档视图，组合模板见
+`examples/profiles/explicit_domains.toml`；完整分类与迁移见[TOOL_PROFILES.md](docs/TOOL_PROFILES.md)。
+已运行旧程序需一次MCP重连加载本次更新；新程序按界面浏览无需再次重连，不重启Blender。
+
+### 14.2 验证入口
+
+- 模拟：`python -m unittest tests.test_outliner tests.test_outliner_management`。
+- 实际 MCP 固定93项清单与目录视图：`python tests/test_outliner_profiles_integration.py`；使用
+  真实 `server.py` 的独立 stdio 实例，不连接 Blender、不操作模型。
+- 运行时：`python tests/test_outliner_live_acceptance.py`；必须先加载新桥命令，门禁不满足
+  时只报告缺失，不创建数据；满足后仅在独有、未激活的临时场景测试，不保存 `.blend`。
+  报告在 `.runtime/outliner_live_acceptance.json`，不能把模拟结果当作实机结果。

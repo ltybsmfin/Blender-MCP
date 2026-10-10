@@ -123,6 +123,37 @@ def main(argv=None) -> int:
         sys.path.insert(0, str(ADDON_DIR))
     import blender_mcp_addon as addon  # noqa: PLC0415
 
+    # Running this supported bootstrap in an existing Blender refreshes only
+    # the isolated file and Outliner commands. Keep the live listener/timer, token, scene and
+    # all other registered commands intact; do not reload or stop the add-on.
+    import importlib
+    import file_open
+    file_open = importlib.reload(file_open)
+    file_open.register_commands(addon)
+    import outliner
+    outliner = importlib.reload(outliner)
+    helpers = outliner.register_commands(addon)
+    import outliner_management
+    outliner_management = importlib.reload(outliner_management)
+    outliner_management.register_commands(addon, helpers)
+
+    # Refresh isolated review commands without re-registering UI classes or
+    # interrupting the resident listener. Abort borrowed UI sessions first.
+    import review_capture_common
+    for session in list(review_capture_common._SESSIONS.values()):
+        review_capture_common.restore_session(session, reason="bootstrap_refresh")
+    review_capture_common = importlib.reload(review_capture_common)
+    import properties
+    import geometry_nodes_edit
+    import model_inspection
+    import geometry_nodes_capture
+    for module in (properties, geometry_nodes_edit, model_inspection, geometry_nodes_capture):
+        module = importlib.reload(module)
+        module.register_commands(addon)
+    import review_maintenance
+    review_maintenance = importlib.reload(review_maintenance)
+    review_maintenance.register_commands(addon)
+
     quiet = bool(options["quiet"])
     log = addon._Logger(addon._log_path())
 
@@ -136,8 +167,20 @@ def main(argv=None) -> int:
     host = options["host"]
     port = int(options["port"])
 
-    addon.register()
     token = addon.read_or_create_token(token_path)
+
+    # This script and the resident timer both run on Blender's main thread.
+    # A blocking TCP health probe against our own listener cannot be serviced
+    # until this script returns. Reuse the live in-process server directly.
+    resident = getattr(addon, "_SERVER", None)
+    if resident is not None and resident.running:
+        import hmac
+        if (resident.host != addon.normalize_loopback_host(host) or resident.port != port or
+                not hmac.compare_digest(resident._token, token)):
+            raise RuntimeError("A bridge is already running in this Blender with different settings; leave it running and use its existing configuration")
+        say("reusing the bridge already running in this Blender on %s" % resident.address)
+        print("READY reused %s" % resident.address)
+        return 0
 
     # Reuse a healthy bridge instead of stacking a second listener on the port.
     if not options["force"]:
@@ -151,6 +194,11 @@ def main(argv=None) -> int:
             return 0
     else:
         say("--mcp-force: starting our own bridge even if %s:%d answers" % (host, port))
+
+    # A healthy resident add-on already owns its registered UI classes. Probe
+    # first so rerunning this entry never registers them again (Blender 5.2
+    # raises ValueError for duplicate register_class, not RuntimeError).
+    addon.register()
 
     pump = options["pump"]
     if pump is None:
@@ -196,4 +244,10 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Blender treats SystemExit(0) from a --python script as a request to quit
+    # the whole application. In GUI mode main() merely registers the timer;
+    # returning normally is essential so the window/event loop stays alive.
+    # Background mode exits naturally after its bounded/manual pump returns.
+    status = main()
+    if status:
+        raise RuntimeError("Blender MCP bootstrap failed (status %d); see BLENDER_MCP_FAILED above" % status)

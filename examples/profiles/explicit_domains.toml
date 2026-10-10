@@ -1,0 +1,8 @@
+# Initial documentation view only; all 93 tools stay registered and callable.
+# This view array takes precedence over a valid named BLENDER_MCP_PROFILE.
+[mcp_servers.blender]
+command = 'D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe'
+args = ['D:\AI\MCP\Blender\MCP\server.py']
+[mcp_servers.blender.env]
+BLENDER_MCP_VIEW_DOMAINS = '["geometry_nodes", "properties", "model_inspection"]'
+BLENDER_MCP_PORT = '9876'

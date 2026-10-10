@@ -1,0 +1,5024 @@
+{
+  "blender_health": {
+    "name": "blender_health",
+    "description": "Health check of the local Blender bridge and Blender itself: bridge status, protocol version, Blender version, Python version, PID, loaded .blend, scene name, object and node group counts, and the list of bridge commands. Call this first: it proves the MCP server can reach Blender and tells you the exact Blender version whose RNA you are about to use.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_healthArguments",
+      "type": "object"
+    }
+  },
+  "blender_server_status": {
+    "name": "blender_server_status",
+    "description": "Counters of the Blender-side socket loop: running flag, address, connected clients, successful/failed/unauthorized request counts and the last error. Use it to diagnose 'Blender is busy', auth problems or stalled clients.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_server_statusArguments",
+      "type": "object"
+    }
+  },
+  "blender_list_commands": {
+    "name": "blender_list_commands",
+    "description": "List every low-level bridge command the running Blender exposes, with a mutating flag. Useful to confirm the add-on version loaded in Blender matches this MCP server.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_list_commandsArguments",
+      "type": "object"
+    }
+  },
+  "blender_ping": {
+    "name": "blender_ping",
+    "description": "Cheapest possible round trip to the Blender bridge (no scene access).",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_pingArguments",
+      "type": "object"
+    }
+  },
+  "blender_bridge_probe": {
+    "name": "blender_bridge_probe",
+    "description": "Probe the configured bridge address without raising: returns reachable=true/false plus the health payload or the error text. Use it before long workflows to decide whether a Blender has to be launched.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_bridge_probeArguments",
+      "type": "object"
+    }
+  },
+  "blender_launch_blender": {
+    "name": "blender_launch_blender",
+    "description": "Launch the bundled Blender with the bridge bootstrap script and wait (bounded) until the bridge answers, returning its PID. If a healthy bridge already answers, nothing is launched and 'reused' is true. gui=true starts a normal GUI Blender (default; user preferences are kept, no --factory-startup); background=true starts a headless Blender with the manual socket pump (required, since timers never fire with --background), which is the right choice for automated tests. factory_startup=true is only for controlled test runs. The child process output is written to MCP/.runtime/logs/, never to the MCP stdio stream, and no existing Blender process is ever terminated. Startup is refused when Blender is already open without a bridge, the port is occupied, or health fails with authentication/protocol/timeout errors. extra_args permits only --mcp-quiet and --mcp-pump-seconds N.",
+    "inputSchema": {
+      "properties": {
+        "gui": {
+          "default": true,
+          "title": "Gui",
+          "type": "boolean"
+        },
+        "background": {
+          "default": false,
+          "title": "Background",
+          "type": "boolean"
+        },
+        "factory_startup": {
+          "default": false,
+          "title": "Factory Startup",
+          "type": "boolean"
+        },
+        "wait_seconds": {
+          "default": 30.0,
+          "title": "Wait Seconds",
+          "type": "number"
+        },
+        "reuse_existing": {
+          "default": true,
+          "title": "Reuse Existing",
+          "type": "boolean"
+        },
+        "blender_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blender Path"
+        },
+        "extra_args": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Extra Args"
+        }
+      },
+      "title": "blender_launch_blenderArguments",
+      "type": "object"
+    }
+  },
+  "blender_scene_summary": {
+    "name": "blender_scene_summary",
+    "description": "Overview of the loaded scene: frame range, collections, materials, node groups (with node counts and user counts) and per-object rows (type, vertex/polygon counts, modifier types, shape key count, driver count, custom property keys). Start here to discover exact names.",
+    "inputSchema": {
+      "properties": {
+        "include_objects": {
+          "default": true,
+          "title": "Include Objects",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_scene_summaryArguments",
+      "type": "object"
+    }
+  },
+  "blender_list_objects": {
+    "name": "blender_list_objects",
+    "description": "List objects, optionally filtered by substring of the name and/or exact Blender type (MESH, CURVE, EMPTY, ...). Returns a compact row per object.",
+    "inputSchema": {
+      "properties": {
+        "name_contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name Contains"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "limit": {
+          "default": 200,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "blender_list_objectsArguments",
+      "type": "object"
+    }
+  },
+  "blender_object_info": {
+    "name": "blender_object_info",
+    "description": "Deep introspection of one object: transforms, world matrix, custom properties, modifiers with their geometry-nodes parameters, vertex groups, materials, shape key inventory with topology consistency, drivers, and - importantly - the EVALUATED mesh (vertex/edge/polygon counts, world-space bounds and a small signature) so you can verify what modifiers actually produce instead of guessing.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "include_evaluated": {
+          "default": true,
+          "title": "Include Evaluated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "blender_object_infoArguments",
+      "type": "object"
+    }
+  },
+  "blender_save_blend": {
+    "name": "blender_save_blend",
+    "description": "Save the current file as <workspace>/Project/<relative_path>. The path is resolved and must stay inside the project root: absolute paths, '..' escapes and symlink/junction components are rejected. overwrite defaults to false and an existing file is an error until you pass overwrite=true explicitly.",
+    "inputSchema": {
+      "properties": {
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "compress": {
+          "default": false,
+          "title": "Compress",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "relative_path"
+      ],
+      "title": "blender_save_blendArguments",
+      "type": "object"
+    }
+  },
+  "blender_create_case_scene": {
+    "name": "blender_create_case_scene",
+    "description": "Create a NEW, genuinely empty scene for isolated case work: no objects, no collections, no world are copied from any existing scene, and nothing else in the file is modified. The name must be globally unique - an existing name is an error and is NEVER auto-suffixed (an accidental 'Case.001' would silently split case data). With activate=true the scene is made the active scene through an explicit, verified window.scene assignment; if the switch cannot be proven (no window, or bpy.context.scene does not follow) it is rolled back, the new scene is removed and an error is returned instead of a fake success. Returns the previous/current scene, the stable scene id, emptiness counts and proof that pre-existing scenes are unchanged. Use globally unique, prefixed names for everything you create inside a case scene (see docs/SCENE_ISOLATION.md) - the isolation is not a sandbox for the older named-data tools.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "activate": {
+          "default": true,
+          "title": "Activate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "blender_create_case_sceneArguments",
+      "type": "object"
+    }
+  },
+  "blender_switch_scene": {
+    "name": "blender_switch_scene",
+    "description": "Activate an existing scene in the GUI window. The switch is explicit (window.scene = scene) and verified: the window is read back and bpy.context.scene must follow, otherwise the previous scene is restored and an error is returned. Read-only for scene data - no object, collection, world or camera is changed.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "blender_switch_sceneArguments",
+      "type": "object"
+    }
+  },
+  "blender_list_scenes": {
+    "name": "blender_list_scenes",
+    "description": "Scene inventory: name, stable session id, whether it is the current scene, object count, collection count, world, frame range and which GUI windows show it. With include_objects=true it also returns the exact object names per scene, which is how you verify that another scene was not touched.",
+    "inputSchema": {
+      "properties": {
+        "include_objects": {
+          "default": false,
+          "title": "Include Objects",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_list_scenesArguments",
+      "type": "object"
+    }
+  },
+  "blender_save_scene": {
+    "name": "blender_save_scene",
+    "description": "Export ONE scene (plus its mandatory dependency closure) to <workspace>/Project/<relative_path> as a standalone .blend, WITHOUT saving the live main file. Unlike blender_save_blend this never calls save_as_mainfile: the scene is written with bpy.data.libraries.write({scene}, fake_user=false, path_remap='ABSOLUTE', compress=...), staged under an unguessable name in the target directory, verified read-only through a temporary bpy.data.temp_data() main, and only then published with an atomic no-replace primitive (no non-atomic copy fallback exists). External assets are NOT packed: the file keeps absolute paths to images/fonts/sounds that live elsewhere on disk, so it is a reference-only export, not a self-contained one. Before writing, the dependency closure of the scene is checked: another scene, objects/collections outside this scene (a driver or Geometry Nodes reference into an old case) or linked/overridden data make the export fail with external_dependency. The staged file must contain exactly the target scene, exactly the intended object inventory and every dependency whose ID type the file metadata can expose (a lost node group or material is dependency_missing); only scene-owned or non-linkable/embedded datablocks may be absent, and they are reported. The path must stay inside Project (validated here and again inside Blender), must end in .blend, and overwrite defaults to false; the previous file survives any failure. The main file path, the current scene, the context and the preferences are unchanged.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "title": "Scene",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "compress": {
+          "default": false,
+          "title": "Compress",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene",
+        "relative_path"
+      ],
+      "title": "blender_save_sceneArguments",
+      "type": "object"
+    }
+  },
+  "blender_inspect_blend_file": {
+    "name": "blender_inspect_blend_file",
+    "description": "Read-only inventory of a .blend inside <workspace>/Project: scenes, objects and the linkable ID-type collections exposed by Blender library metadata (meshes, node groups, materials, actions, libraries, ...). Embedded/non-linkable data such as mesh-owned shape keys are not individually enumerated. The file is read through bpy.data.temp_data metadata only - it is never opened, appended or loaded into the live bpy.data, and the live file path/current scene are unchanged. Use it to verify an exported case file without touching the running session.",
+    "inputSchema": {
+      "properties": {
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relative_path"
+      ],
+      "title": "blender_inspect_blend_fileArguments",
+      "type": "object"
+    }
+  },
+  "blender_environment": {
+    "name": "blender_environment",
+    "description": "Paths and versions of this MCP server without touching Blender: venv interpreter, workspace root, project root, token file presence, bridge address, timeout, and the bootstrap script that must run inside Blender.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_environmentArguments",
+      "type": "object"
+    }
+  },
+  "blender_open_blend": {
+    "name": "blender_open_blend",
+    "description": "Open an existing .blend inside <workspace>/Project as the session file of this Blender (bridge command open_blend; bpy.ops.wm.open_mainfile with EXEC_DEFAULT, use_scripts always false). It REPLACES the session: confirm_replace_current must be the strict JSON boolean true, otherwise the call fails with unsaved_changes (dirty) or confirmation_required (clean/unknown), because bpy.data.is_dirty is only a hint. 'path' must be a normalized ABSOLUTE .blend path with drive+root inside the project root; relative, drive-relative, rooted-without-drive, UNC/device, dot/dotdot, symlink/junction, outside-Project, missing, directory, wrong-extension and unreadable paths are refused before Blender and again inside it. The file is proven readable and parseable read-only first (a .blend suffix is never enough). The current file is never saved implicitly, the target never written, no second Blender started, and a failed load returns load_failed with honest state, never a rollback promise. load_ui defaults to false (layout kept). After success the result is re-verified read-only via health + list_commands in a bounded budget (reconnect allowed, open_blend never re-sent); a lost reply needs request-correlated bridge audit evidence, else load_pending/verification_failed. Details: docs/OPEN_BLEND.md.",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "confirm_replace_current": {
+          "default": false,
+          "title": "Confirm Replace Current",
+          "type": "boolean"
+        },
+        "load_ui": {
+          "default": false,
+          "title": "Load Ui",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "blender_open_blendArguments",
+      "type": "object"
+    }
+  },
+  "blender_reload_review_bridge": {
+    "name": "blender_reload_review_bridge",
+    "description": "Reload ONLY the five fixed local review bridge modules after a source fix. Takes no code, file or module argument; preserves the resident listener, token and project, never saves .blend. Requires its maintenance command already bootstrapped once. Not exposed by algorithm_review.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_reload_review_bridgeArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  "blender_outliner_hierarchy": {
+    "name": "blender_outliner_hierarchy",
+    "title": "Outliner: collection hierarchy and object ownership",
+    "description": "Read the collection DAG and exact view-layer names of one EXACT scene (never the active scene). From Scene.collection it returns every root-relative path ('' is the root), each collection's direct objects, its direct parent collections file-wide, every scene that links it, its child collections and visibility flags. A collection with several parents is reported as multi_parent (a DAG, not a cycle); real cycles are listed separately; every traversal and payload is bounded and reports truncated=true when a limit was hit. With include_memberships=true each object also reports its global ownership (all owning collections with their scenes/scene_paths, orphan flag). Geometry node groups are global datablocks, reported as such and never as collection members. Read-only.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "include_memberships": {
+          "default": true,
+          "title": "Include Memberships",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene"
+      ],
+      "title": "blender_outliner_hierarchyArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: collection hierarchy and object ownership",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": false,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_ensure_path": {
+    "name": "blender_outliner_ensure_path",
+    "title": "Outliner: ensure a collection path exists",
+    "description": "Create the missing segments of a collection path below Scene.collection of one exact scene. Names are exact and '/' separated; at least one segment is required ('' is refused here because it only addresses an existing root elsewhere). Existing segments are reused idempotently. Blender's automatic '.001' rename is never accepted: a requested name that already exists elsewhere in the file fails with collection_name_conflict before anything is created. Every existing segment must belong to exactly this scene, have one direct parent and not be linked/overridden (collection_shared_across_scenes, collection_multi_parent, read_only_collection, collection_outside_scene). If a later segment fails, only the collections created by this same call are removed again (cleanup is reported, kept data is named). Inert: no object is linked.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "create_missing": {
+          "default": true,
+          "title": "Create Missing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene",
+        "path"
+      ],
+      "title": "blender_outliner_ensure_pathArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: ensure a collection path exists",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_link_objects": {
+    "name": "blender_outliner_link_objects",
+    "title": "Outliner: link objects into a collection",
+    "description": "Link exact object names into the collection at path of one exact scene ('' is the scene root). The whole batch is validated before the first change: unknown names fail with object_not_found, duplicated entries with duplicate_object and globally ambiguous names (a local and a linked datablock with the same name) with ambiguous_object. An object that is already in that collection is skipped idempotently. Additive only: no other membership is unlinked, and no object data, transform, modifier, Geometry Nodes group, material or link is touched; nothing is ever deleted. The target collection must belong to exactly this scene and have a single parent. Returns the ownership of every named object before and after.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "objects"
+      ],
+      "title": "blender_outliner_link_objectsArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: link objects into a collection",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_move_objects": {
+    "name": "blender_outliner_move_objects",
+    "title": "Outliner: move objects between collections",
+    "description": "Link exact objects into the collection at path and unlink them from exactly the same-scene collections named in unlink_from (required; an empty list means link only; '' is the scene root). Only the listed memberships are removed - every other collection that owns an object is left alone. The whole batch is validated and its result precomputed before the first change: a source path equal to path fails with conflicting_paths, a repeated source with duplicate_path, and a batch that would leave an object in no scene with orphan_object (nothing is changed). Objects already in the target are not re-linked. Object datablocks stay untouched - data, transforms, modifiers, Geometry Nodes groups, materials and links are never modified and nothing is deleted. Returns ownership before and after, plus the precomputed plan.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        },
+        "unlink_from": {
+          "items": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Unlink From",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "objects",
+        "unlink_from"
+      ],
+      "title": "blender_outliner_move_objectsArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: move objects between collections",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_unlink_objects": {
+    "name": "blender_outliner_unlink_objects",
+    "title": "Outliner: unlink objects from a collection",
+    "description": "Remove only the membership of exact object names in the collection at path of one exact scene ('' is the scene root). Objects that are not linked there are skipped idempotently and no other membership is touched. The whole batch is precomputed first: if it would leave an object in no collection or in no scene, the call fails with orphan_object and changes nothing; with confirm_orphan=true the link is removed anyway, the object datablock is preserved and a warning is returned. Nothing is ever deleted, and no object data, transform, modifier, Geometry Nodes group, material or link is modified. Returns ownership before and after.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        },
+        "confirm_orphan": {
+          "default": false,
+          "title": "Confirm Orphan",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "objects"
+      ],
+      "title": "blender_outliner_unlink_objectsArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: unlink objects from a collection",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_set_visibility": {
+    "name": "blender_outliner_set_visibility",
+    "title": "Outliner: set collection visibility flags",
+    "description": "Set the native Collection.hide_viewport and/or Collection.hide_render of the collection at path of one exact scene ('' is the scene root). At least one flag must be provided; an omitted flag is left untouched, and a non-boolean value is refused with invalid_argument. The collection must belong to exactly this scene and have a single parent (collection_shared_across_scenes, collection_multi_parent, read_only_collection otherwise). Values are read back and verified; before/after are returned and a repeated call is idempotent. Only these two native flags are written: no object visibility, no collection membership and no data is changed or deleted.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "hide_viewport": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hide Viewport"
+        },
+        "hide_render": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hide Render"
+        }
+      },
+      "required": [
+        "scene",
+        "path"
+      ],
+      "title": "blender_outliner_set_visibilityArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: set collection visibility flags",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false
+    }
+  },
+  "blender_outliner_collection_create": {
+    "name": "blender_outliner_collection_create",
+    "title": "Outliner: create a collection",
+    "description": "Create one exactly named collection below the collection at parent_path of one exact scene ('' is the scene root). The parent is resolved first and must belong to exactly this scene with a single parent and no library link. The requested name is checked file-wide BEFORE anything is created: an existing collection with that exact name somewhere else fails with collection_name_conflict, because Blender would silently store a second one as 'name.001' - which this server never does (auto_suffix=false). A collection that already exists at exactly that parent/name is reused (created=[], reused=[name], idempotent=true) and nothing is allocated. The stored name is read back; a rename/truncation by Blender fails with invalid_name and removes the datablock created by this call. Only one collection datablock is created: no object, no membership, no flag and no Geometry Nodes group is touched.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "parent_path": {
+          "maxLength": 1024,
+          "title": "Parent Path",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene",
+        "parent_path",
+        "name"
+      ],
+      "title": "blender_outliner_collection_createArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: create a collection",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_collection_rename": {
+    "name": "blender_outliner_collection_rename",
+    "title": "Outliner: rename a collection",
+    "description": "Rename the collection at path of one exact scene to an exact name. The scene root cannot be renamed (root_immutable) and the collection must belong to exactly this scene with a single parent and no library link. The requested name is checked file-wide before the write, so a name that already exists elsewhere fails with collection_name_conflict instead of silently becoming 'name.001' (auto_suffix=false). The name is read back afterwards; if Blender stored something else, the previous name is restored where possible and the call fails with invalid_name. Renaming changes the address of the collection and of its descendants - their objects, memberships, data-blocks, Geometry Nodes groups and reference links are untouched. Repeating the call with the same name is idempotent.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "name"
+      ],
+      "title": "blender_outliner_collection_renameArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: rename a collection",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_collection_move": {
+    "name": "blender_outliner_collection_move",
+    "title": "Outliner: move a collection",
+    "description": "Move the collection at path under the collection at parent_path of one exact scene ('' is the scene root). Both collections are resolved and guarded first: source and target parent must belong to exactly this scene, have a single parent and no library link (read_only_collection, collection_shared_across_scenes, collection_multi_parent, collection_outside_scene). The scene root cannot be moved and a target inside the moved subtree - including the collection itself - is refused with cycle_hierarchy. The move links the target parent first and only then unlinks the previous parent, through the shared compensating batch primitive, so a failure restores the old relation and reports applied/compensated/residual. Objects, object data, transforms, modifiers, Geometry Nodes groups, materials and reference links are never touched; a move that is already done is idempotent (changed=false).",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "parent_path": {
+          "maxLength": 1024,
+          "title": "Parent Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "parent_path"
+      ],
+      "title": "blender_outliner_collection_moveArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: move a collection",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_collection_delete": {
+    "name": "blender_outliner_collection_delete",
+    "title": "Outliner: delete a collection",
+    "description": "PERMANENTLY delete the collection at path of one exact scene. confirm_delete must be true (confirmation_required otherwise) and the scene root is refused (root_immutable). By default a collection that still has children is refused with collection_has_children; with recursive=true exactly that subtree is deleted. The whole subtree is prevalidated before the first removal: library links (read_only_collection), extra scenes or parents (collection_shared_across_scenes, collection_multi_parent, collection_outside_scene), an external parent route, a fake user, a Collection Instance source, a Geometry Nodes reference, or any user beyond its direct parents (collection_in_use) all refuse the call with nothing changed. No object is ever deleted: objects that would leave the scene are linked to the scene root first (compensated on failure) and every other membership is preserved. Removal is permanent in Blender, so this command is NOT transactional - a failure after the first real removal is reported as outliner_delete_partial with deleted/residual/partial/not_transactional=true instead of pretending a rollback. Returns the deleted collections, the preserved objects with their original membership, the relinked objects and warnings.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "confirm_delete": {
+          "title": "Confirm Delete",
+          "type": "boolean"
+        },
+        "recursive": {
+          "default": false,
+          "title": "Recursive",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "confirm_delete"
+      ],
+      "title": "blender_outliner_collection_deleteArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: delete a collection",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": false,
+      "deletes_data": true,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_object_create": {
+    "name": "blender_outliner_object_create",
+    "title": "Outliner: create an ordinary Mesh/Empty object",
+    "description": "Create ONE ordinary object in the collection at path of one exact scene ('' is the scene root). type is 'MESH' (default) or 'EMPTY': a Mesh gets a real bpy.data.meshes data block, an Empty gets none - Collection Instances are not created by this package. For a Mesh, vertices ([[x,y,z], ...]) and faces ([[i,j,k,...], ...]) are optional: omitting both creates an empty mesh data block that is ready for a Geometry Nodes modifier. Every value is validated before the first allocation: vertices must be finite three-number triples, every face needs at least three integer indices that index the supplied vertices, and the totals are bounded (invalid_vertices / invalid_faces). 'EMPTY' together with vertices/faces is refused (invalid_argument). Names are exact and never auto-suffixed: an existing object with that name fails with object_name_conflict and existing mesh data with that name fails with data_name_conflict (object and mesh names live in different ID namespaces, so an object and a mesh may share a name while two meshes may not). The mesh data name defaults to the object name, and both are read back: a rename by Blender fails with invalid_name and removes exactly the datablocks this call created (cleanup.removed/residual). Returns the object type, data name, membership and counts; no existing object, data block or Geometry Nodes group is modified.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "default": "MESH",
+          "enum": [
+            "MESH",
+            "EMPTY"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "vertices": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              "maxItems": 20000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vertices"
+        },
+        "faces": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 10000,
+                "minItems": 3,
+                "type": "array"
+              },
+              "maxItems": 20000,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Faces"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "name"
+      ],
+      "title": "blender_outliner_object_createArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: create an ordinary Mesh/Empty object",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": false,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_object_rename": {
+    "name": "blender_outliner_object_rename",
+    "title": "Outliner: rename an ordinary object",
+    "description": "Rename ONE ordinary object of one exact scene to an exact name. The object must be linked in exactly this scene and not linked/overridden (object_not_in_scene, object_shared_across_scenes, read_only_object); unknown or ambiguous names fail with object_not_found/ambiguous_object. The new name is checked file-wide before the write, so a collision fails with object_name_conflict instead of becoming 'name.001' (auto_suffix=false); the stored name is read back and the previous name is restored where possible if Blender stored something else (invalid_name). Only the Object name changes: the mesh/data block, modifiers, Geometry Nodes groups, drivers, shape keys, vertex groups, constraints, parent and collection membership are read before and after and reported in references (a difference would restore the old name and fail). Repeating the call with the same name is idempotent.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene",
+        "object",
+        "name"
+      ],
+      "title": "blender_outliner_object_renameArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: rename an ordinary object",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_object_delete": {
+    "name": "blender_outliner_object_delete",
+    "title": "Outliner: delete ordinary objects",
+    "description": "PERMANENTLY delete the exact Object datablocks named in objects of one exact scene. confirm_delete must be true (confirmation_required otherwise); the explicit object list plus that confirmation is the authorisation, there is no hidden permission parameter. The whole batch is validated BEFORE the first removal and a rejected batch deletes nothing: every object must be linked in exactly this scene (object_not_in_scene, object_shared_across_scenes), not linked/overridden (read_only_object) and not referenced anywhere else (object_in_use) - child objects (object.parent), constraint targets, modifier objects, Geometry Nodes object sockets and any other user reported by bpy.data.user_map or by Object.users beyond the object's direct collection ownership all refuse the call instead of deleting a referenced object. Only the Object data blocks are removed: mesh, material and Geometry Nodes data are preserved with zero users and orphan data is never purged. Removal is permanent in Blender, so this command is NOT transactional - a failure after the first real removal is reported as outliner_delete_partial with deleted/residual/partial/not_transactional=true and never reads a freed datablock.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        },
+        "confirm_delete": {
+          "title": "Confirm Delete",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "scene",
+        "objects",
+        "confirm_delete"
+      ],
+      "title": "blender_outliner_object_deleteArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: delete ordinary objects",
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": false,
+      "deletes_data": true,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty"
+    }
+  },
+  "blender_outliner_collection_display": {
+    "name": "blender_outliner_collection_display",
+    "title": "Outliner: set collection display switches in a view layer",
+    "description": "Set the Outliner display switches of the collection at path of one exact scene, addressed IN one explicit view layer (the exact name is looked up in scene.view_layers - the active view layer and every other UI context are never used). Four switches, each set to true (switch the state on) or false (switch it back off); an omitted switch keeps its current value and an all-null call is refused with invalid_argument: hidden = the per-view-layer eye (LayerCollection.hide_viewport), exclude = the per-view-layer checkbox (LayerCollection.exclude), disable_viewport = the global monitor icon (Collection.hide_viewport) and hide_render = render visibility (Collection.hide_render). The two datablock-wide switches go through the single-owner guard, so a collection shared across scenes or with several parents is refused (collection_shared_across_scenes, collection_multi_parent, read_only_collection) while the per-view-layer switches only need the collection to be addressable in that view layer (collection_not_in_view_layer). Every switch is written through the compensating batch primitive, read back individually and returned as before/after; a value Blender did not store restores the previous state and fails with outliner_write_failed. Repeating the same values is idempotent.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "title": "Path",
+          "type": "string"
+        },
+        "view_layer": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "View Layer",
+          "type": "string"
+        },
+        "hidden": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hidden"
+        },
+        "disable_viewport": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disable Viewport"
+        },
+        "hide_render": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hide Render"
+        },
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclude"
+        }
+      },
+      "required": [
+        "scene",
+        "path",
+        "view_layer"
+      ],
+      "title": "blender_outliner_collection_displayArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: set collection display switches in a view layer",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty",
+      "per_view_layer": true,
+      "monitor_property_written": true,
+      "per_view_layer_flags": [
+        "hidden",
+        "exclude"
+      ],
+      "datablock_flags": [
+        "disable_viewport",
+        "hide_render"
+      ]
+    }
+  },
+  "blender_outliner_object_display": {
+    "name": "blender_outliner_object_display",
+    "title": "Outliner: set object display switches in a view layer",
+    "description": "Set the Outliner display switches of exact object names of one exact scene, addressed IN one explicit view layer (the exact name is looked up in scene.view_layers - never the active view layer, and objects shared across scenes are refused). Three switches, each true (on) or false (back off); an omitted switch keeps its value and an all-null call is refused with invalid_argument: hidden = the per-view-layer eye (Object.hide_set(hide, view_layer=...) / Object.hide_get(view_layer=...)), disable_viewport = the global monitor icon (Object.hide_viewport) and hide_render = render visibility (Object.hide_render, which is also how a camera is excluded from renders). The whole batch is validated first - every object must be linked in exactly this scene, singly scened and writable (object_not_in_scene, object_shared_across_scenes, read_only_object), unknown or ambiguous names fail with object_not_found/ambiguous_object - so a rejected batch writes nothing. Every switch is written through the compensating batch primitive, read back individually and returned as before/after; a value Blender did not store restores the previous state and fails with outliner_write_failed. No object data, modifier or Geometry Nodes group is modified, and repeating the same values is idempotent.",
+    "inputSchema": {
+      "properties": {
+        "scene": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Scene",
+          "type": "string"
+        },
+        "objects": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Objects",
+          "type": "array"
+        },
+        "view_layer": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "View Layer",
+          "type": "string"
+        },
+        "hidden": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hidden"
+        },
+        "disable_viewport": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disable Viewport"
+        },
+        "hide_render": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hide Render"
+        }
+      },
+      "required": [
+        "scene",
+        "objects",
+        "view_layer"
+      ],
+      "title": "blender_outliner_object_displayArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Outliner: set object display switches in a view layer",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "outliner",
+      "bridge_prefix": "outliner_",
+      "mutating": true,
+      "idempotent": true,
+      "deletes_data": false,
+      "collection_primitives": "blender/outliner.py:register_commands(api)",
+      "object_kind": "ordinary_mesh_empty",
+      "per_view_layer": true,
+      "monitor_property_written": true,
+      "per_view_layer_flags": [
+        "hidden"
+      ],
+      "datablock_flags": [
+        "disable_viewport",
+        "hide_render"
+      ]
+    }
+  },
+  "blender_create_node_group": {
+    "name": "blender_create_node_group",
+    "description": "Create a GeometryNodeTree node group with a fully typed interface. Each interface entry becomes a real group socket with identifier, default value and UI range, which is what the Geometry Nodes modifier later exposes as parameters. By default the Group Input and Group Output nodes are created and a 'Geometry' output socket is added if you did not declare one. Datablock sockets (NodeSocketObject/Material/Collection/Image) take a structured reference as their default_value, e.g. {\"id_type\": \"OBJECT\", \"id_name\": \"Cube.001\"}, or null to leave them empty; other reference kinds (NODETREE/SCENE) are not valid interface defaults.",
+    "inputSchema": {
+      "$defs": {
+        "InterfaceSocketSpec": {
+          "additionalProperties": false,
+          "description": "One Geometry Nodes group interface socket.",
+          "properties": {
+            "name": {
+              "description": "Socket label shown in the modifier / group UI.",
+              "title": "Name",
+              "type": "string"
+            },
+            "socket_type": {
+              "description": "Blender interface socket type.",
+              "enum": [
+                "NodeSocketFloat",
+                "NodeSocketInt",
+                "NodeSocketBool",
+                "NodeSocketVector",
+                "NodeSocketColor",
+                "NodeSocketRotation",
+                "NodeSocketString",
+                "NodeSocketMenu",
+                "NodeSocketGeometry",
+                "NodeSocketMaterial",
+                "NodeSocketObject",
+                "NodeSocketCollection",
+                "NodeSocketImage"
+              ],
+              "title": "Socket Type",
+              "type": "string"
+            },
+            "in_out": {
+              "default": "INPUT",
+              "enum": [
+                "INPUT",
+                "OUTPUT"
+              ],
+              "title": "In Out",
+              "type": "string"
+            },
+            "default_value": {
+              "default": null,
+              "description": "Socket default: number, bool, string or vector list, e.g. [1.0, 0.0, 0.0].",
+              "title": "Default Value"
+            },
+            "min_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "UI soft minimum (numeric sockets).",
+              "title": "Min Value"
+            },
+            "max_value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "UI soft maximum (numeric sockets).",
+              "title": "Max Value"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Description"
+            },
+            "subtype": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Blender subtype, e.g. 'DISTANCE', 'ANGLE', 'FACTOR', 'PERCENTAGE', 'TRANSLATION'.",
+              "title": "Subtype"
+            },
+            "hide_value": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Hide the inline value widget.",
+              "title": "Hide Value"
+            },
+            "hide_in_modifier": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Do not expose on the modifier.",
+              "title": "Hide In Modifier"
+            },
+            "default_attribute_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Default Attribute Name"
+            }
+          },
+          "required": [
+            "name",
+            "socket_type"
+          ],
+          "title": "InterfaceSocketSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "interface": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/InterfaceSocketSpec"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface"
+        },
+        "with_input_output": {
+          "default": true,
+          "title": "With Input Output",
+          "type": "boolean"
+        },
+        "geometry_output": {
+          "default": true,
+          "title": "Geometry Output",
+          "type": "boolean"
+        },
+        "if_exists": {
+          "default": "error",
+          "enum": [
+            "error",
+            "replace",
+            "reuse"
+          ],
+          "title": "If Exists",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "blender_create_node_groupArguments",
+      "type": "object"
+    }
+  },
+  "blender_create_node": {
+    "name": "blender_create_node",
+    "description": "Add one node to a node group. node_type is a Blender node idname such as 'GeometryNodeTransform', 'GeometryNodeMeshGrid', 'GeometryNodeSetPosition', 'ShaderNodeCombineXYZ' or 'GeometryNodeGroup'. If the node is created but 'settings' is rejected the node is removed again, so a failed call leaves no half-configured node behind. Always inspect the returned node payload for the REAL socket identifiers - display names are localized and can change between Blender versions.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "node_type": {
+          "title": "Node Type",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "settings": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Settings"
+        }
+      },
+      "required": [
+        "group",
+        "node_type"
+      ],
+      "title": "blender_create_nodeArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_node_property": {
+    "name": "blender_set_node_property",
+    "description": "Set one RNA property on a node (for example 'operation', 'domain', 'data_type', 'mode', or the 'node_tree' pointer of a GeometryNodeGroup). Property names are the RNA identifiers reported by blender_describe_node_type; enum values are validated by Blender and the allowed identifiers are returned on failure. Datablock-pointer properties take a structured reference instead of a string: {\"id_type\": \"NODETREE\", \"id_name\": \"MyGroup\"} (reference kinds: OBJECT, NODETREE, MATERIAL, COLLECTION, IMAGE), and null clears the pointer. The referenced datablock must already exist and must match the property's RNA fixed type - a GeometryNodeGroup also refuses a ShaderNodeTree, which Blender itself would accept. On failure the old pointer is left untouched. Assigning a group pointer rebuilds the node's sockets, so links are dropped by Blender: the response reports links_before/links_after plus a warning, and links must be made again afterwards (see blender_inspect_node_group for the new identifiers).",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Node"
+        },
+        "property": {
+          "title": "Property",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "group",
+        "node",
+        "property",
+        "value"
+      ],
+      "title": "blender_set_node_propertyArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_socket_default": {
+    "name": "blender_set_socket_default",
+    "description": "Set a node socket's default value. The socket may be addressed by identifier (preferred), display name or index. Values: number, bool, string, or a list for vector/colour/rotation sockets (a 3-element list is accepted for a rotation socket and converted to a quaternion). A default value on a socket that is already linked has no effect until you unlink it. Datablock sockets (Object Info's 'Object', Set Material's 'Material', Collection Info's 'Collection', Image Texture's 'Image', ...) take a structured reference, e.g. {\"id_type\": \"OBJECT\", \"id_name\": \"Cube\"} with reference kinds OBJECT, NODETREE, MATERIAL, COLLECTION or IMAGE; null clears the pointer back to empty. A plain string or number is refused for those sockets, a wrong-type or missing datablock is refused with an explicit error, and the previous pointer is left untouched. The readback serialises the pointer as a reference object so you can see exactly what is assigned.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Node"
+        },
+        "socket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Socket"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "in_out": {
+          "default": "INPUT",
+          "enum": [
+            "INPUT",
+            "OUTPUT"
+          ],
+          "title": "In Out",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group",
+        "node",
+        "socket",
+        "value"
+      ],
+      "title": "blender_set_socket_defaultArguments",
+      "type": "object"
+    }
+  },
+  "blender_link_sockets": {
+    "name": "blender_link_sockets",
+    "description": "Link an output socket to an input socket. Identifiers come from blender_inspect_node_group or blender_describe_node_type. Type compatibility is checked before Blender is asked, so an impossible link (for example Geometry into a Float) is an explicit error. Linking into an already linked input replaces the old link unless replace=false.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "from_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "From Node"
+        },
+        "from_socket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "From Socket"
+        },
+        "to_node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "To Node"
+        },
+        "to_socket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "To Socket"
+        },
+        "replace": {
+          "default": true,
+          "title": "Replace",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "from_node",
+        "from_socket",
+        "to_node",
+        "to_socket"
+      ],
+      "title": "blender_link_socketsArguments",
+      "type": "object"
+    }
+  },
+  "blender_unlink_socket": {
+    "name": "blender_unlink_socket",
+    "description": "Remove every link that touches one socket and report exactly which links were removed. Use it before setting a default value on a socket that is currently driven by a link.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Node"
+        },
+        "socket": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Socket"
+        },
+        "in_out": {
+          "default": "INPUT",
+          "enum": [
+            "INPUT",
+            "OUTPUT"
+          ],
+          "title": "In Out",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group",
+        "node",
+        "socket"
+      ],
+      "title": "blender_unlink_socketArguments",
+      "type": "object"
+    }
+  },
+  "blender_remove_node": {
+    "name": "blender_remove_node",
+    "description": "Remove one node from a node group and report how many links disappeared with it. The Group Input / Group Output interface nodes are protected and cannot be removed this way.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Node"
+        }
+      },
+      "required": [
+        "group",
+        "node"
+      ],
+      "title": "blender_remove_nodeArguments",
+      "type": "object"
+    }
+  },
+  "blender_inspect_node_group": {
+    "name": "blender_inspect_node_group",
+    "description": "Full structural report of a node group: every node with its index, idname, label, location, inputs/outputs with identifiers, types, default values and link state; every link with identifiers on both ends; the interface (inputs/outputs with identifiers, defaults, ranges, subtypes, hidden flags); which objects use the group as a modifier; and drivers on the group. Call this BEFORE linking anything - socket identifiers are the stable handles.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "include_sockets": {
+          "default": true,
+          "title": "Include Sockets",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "blender_inspect_node_groupArguments",
+      "type": "object"
+    }
+  },
+  "blender_attach_geometry_nodes_modifier": {
+    "name": "blender_attach_geometry_nodes_modifier",
+    "description": "Attach a node group to a mesh object as a Geometry Nodes modifier and optionally set its exposed parameters in the same call. Existing modifiers are preserved (this is additive and procedural), the modifier is re-used when it is already attached to the same group, and the response contains the evaluated mesh counts/bounds so you can see the effect immediately.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "modifier_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier Name"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameters"
+        },
+        "reuse_existing": {
+          "default": true,
+          "title": "Reuse Existing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "group"
+      ],
+      "title": "blender_attach_geometry_nodes_modifierArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_modifier_input": {
+    "name": "blender_set_modifier_input",
+    "description": "Set one exposed Geometry Nodes parameter on a mesh object's modifier and read every parameter back. Values must match the interface socket type (float, int, bool, string, or a vector list). Datablock parameters (Object/Material/Collection/Image inputs) take a structured reference such as {\"id_type\": \"OBJECT\", \"id_name\": \"Cube\"} and null clears them; plain values are refused there on purpose, because Blender's ID-property store would silently keep a string that names no datablock. Geometry inputs cannot be set by value. With include_evaluated=true the response also contains the re-evaluated mesh counts, world bounds and a mesh signature, which is the reliable way to prove a parameter changed geometry.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "input": {
+          "title": "Input",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        },
+        "include_evaluated": {
+          "default": true,
+          "title": "Include Evaluated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "input",
+        "value"
+      ],
+      "title": "blender_set_modifier_inputArguments",
+      "type": "object"
+    }
+  },
+  "blender_list_node_types": {
+    "name": "blender_list_node_types",
+    "description": "Runtime discovery of creatable node types in THIS Blender build (query the live bpy.types registry, not a hardcoded list). Filter with 'prefix' ('GeometryNode', 'ShaderNode', FunctionNode', 'CompositorNode') and an optional case-insensitive 'contains' substring, e.g. contains='Mesh' or contains='Set'. Use it when you are unsure whether a node exists in this version.",
+    "inputSchema": {
+      "properties": {
+        "prefix": {
+          "default": "GeometryNode",
+          "title": "Prefix",
+          "type": "string"
+        },
+        "contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contains"
+        },
+        "limit": {
+          "default": 200,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "blender_list_node_typesArguments",
+      "type": "object"
+    }
+  },
+  "blender_describe_node_type": {
+    "name": "blender_describe_node_type",
+    "description": "Instantiate a throwaway node of the given type and report its ACTUAL sockets (name, identifier, index, type, default value) plus its RNA properties with types, defaults, ranges and enum identifiers. This is the compatibility tool: it tells you exactly what this Blender version expects before you build a graph.",
+    "inputSchema": {
+      "properties": {
+        "node_type": {
+          "title": "Node Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_type"
+      ],
+      "title": "blender_describe_node_typeArguments",
+      "type": "object"
+    }
+  },
+  "blender_batch_graph_edit": {
+    "name": "blender_batch_graph_edit",
+    "description": "Apply an ordered list of graph edits (create_node, set_node_property, set_socket_default, link_sockets, unlink_socket, remove_node) in ONE call and get per-operation results. TRANSACTIONAL BY DEFAULT: the whole list is applied to an isolated staging copy of the node group and the group is only swapped in when every operation succeeded. A failure therefore leaves the original group byte-for-byte intact - nodes, links, socket defaults, the interface, modifier input values, nested group references and drivers - and comes back as a tool error with status 'rolled_back' plus the per-step failures; nothing is half-applied. On success the response reports committed=true and the group datablock identity is replaced (same name and interface identifiers, so users keep working). Linked-library groups are refused. Set transactional=false to get the legacy non-atomic behaviour, which is the ONLY mode in which continue_on_error is accepted; in that mode 'completed' edits stay applied and must be repaired explicitly (the response then reports rollback=false, partial=true).",
+    "inputSchema": {
+      "$defs": {
+        "GraphOperation": {
+          "additionalProperties": true,
+          "description": "One ordered geometry-nodes edit for ``blender_batch_graph_edit``.\n\n``op`` selects the operation; the remaining fields are the same arguments as\nthe corresponding single-purpose tool.  Unknown extra keys are passed\nthrough to Blender so the batch cannot silently drop an argument.",
+          "properties": {
+            "op": {
+              "description": "Operation to perform, applied in list order.",
+              "enum": [
+                "create_node",
+                "set_node_property",
+                "set_socket_default",
+                "link_sockets",
+                "unlink_socket",
+                "remove_node"
+              ],
+              "title": "Op",
+              "type": "string"
+            },
+            "node_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "create_node: e.g. 'GeometryNodeTransform'.",
+              "title": "Node Type"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "create_node: explicit node name.",
+              "title": "Name"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Label"
+            },
+            "location": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "create_node: [x, y] in the node editor.",
+              "title": "Location"
+            },
+            "settings": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "create_node/set_node_property: RNA property values.",
+              "title": "Settings"
+            },
+            "node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Node name (str) or node index (int).",
+              "title": "Node"
+            },
+            "property": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "set_node_property: RNA property identifier.",
+              "title": "Property"
+            },
+            "value": {
+              "default": null,
+              "description": "Value to assign (socket default or node property).",
+              "title": "Value"
+            },
+            "socket": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Socket identifier, display name or index (int).",
+              "title": "Socket"
+            },
+            "in_out": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "'INPUT' (default) or 'OUTPUT'.",
+              "title": "In Out"
+            },
+            "from_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "From Node"
+            },
+            "from_socket": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "From Socket"
+            },
+            "to_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "To Node"
+            },
+            "to_socket": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "To Socket"
+            },
+            "replace": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "link_sockets: relink an already linked input socket.",
+              "title": "Replace"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "title": "GraphOperation",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/GraphOperation"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "transactional": {
+          "default": true,
+          "title": "Transactional",
+          "type": "boolean"
+        },
+        "continue_on_error": {
+          "default": false,
+          "title": "Continue On Error",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "operations"
+      ],
+      "title": "blender_batch_graph_editArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_layout": {
+    "name": "blender_geometry_nodes_layout",
+    "description": "Read-only structure of one exact Geometry Nodes node group (GeometryNodeTree only). Returns every node with bl_idname, label, canvas-local and absolute location, parent Frame, width/dimensions plus layout_metrics_reliable (false while a node editor has not drawn the tree), sockets with identifier/type/link state/is_multi_input, the group interface (identifier, socket type, defaults, hide flags), every link with both endpoints, its is_valid/is_muted state, multi_input_sort_id and 0-based multi_input_order, the Frames with their children, the Reroutes with in/out counts, the ordered resolved sources of every multi-input socket, and every object/modifier that uses the tree. Pass object (and modifier when the object has several Geometry Nodes modifiers) to prove that the group belongs to that modifier: a mismatch is an error, never a guess. This tool never writes and never rearranges.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        }
+      },
+      "required": [
+        "group"
+      ],
+      "title": "blender_geometry_nodes_layoutArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_move_nodes": {
+    "name": "blender_geometry_nodes_move_nodes",
+    "description": "Move explicitly named nodes of one exact GeometryNodeTree to the requested canvas coordinates. Only the listed nodes are written - no neighbour, Frame or reroute is repositioned, no name is changed and no link is touched. List of {'node': exact node name, 'x': number, 'y': number}. With absolute=false (the default) the values are the node's canvas-local location, exactly like the location field reported by blender_geometry_nodes_layout; with absolute=true they are canvas coordinates and the parent Frame offset is subtracted for you. Duplicate, unknown or non-finite entries are refused before anything is written, and nothing outside this list is moved. On any failure the original locations are restored from a snapshot of the same tree and the call is reported as an error with rolled_back; on success the response contains before/after positions and a validation block.",
+    "inputSchema": {
+      "$defs": {
+        "NodePosition": {
+          "additionalProperties": false,
+          "properties": {
+            "node": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Node",
+              "type": "string"
+            },
+            "x": {
+              "maximum": 1000000.0,
+              "minimum": -1000000.0,
+              "title": "X",
+              "type": "number"
+            },
+            "y": {
+              "maximum": 1000000.0,
+              "minimum": -1000000.0,
+              "title": "Y",
+              "type": "number"
+            }
+          },
+          "required": [
+            "node",
+            "x",
+            "y"
+          ],
+          "title": "NodePosition",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/NodePosition"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Positions",
+          "type": "array"
+        },
+        "absolute": {
+          "default": false,
+          "title": "Absolute",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "positions"
+      ],
+      "title": "blender_geometry_nodes_move_nodesArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_reroute_insert": {
+    "name": "blender_geometry_nodes_reroute_insert",
+    "description": "Insert Blender's native NodeReroute nodes into links that ALREADY exist, the structured equivalent of Ctrl/Shift + right-click on a wire - no mouse gesture and no geometry change. List of existing links to interrupt, each {'from_node', 'from_socket', 'to_node', 'to_socket'} using the identifiers reported by blender_geometry_nodes_layout, plus the optional 'multi_input_sort_id' assertion for links into a multi-input socket (the link is then only accepted when its current sort id matches). Every link must exist exactly once; missing, duplicated or ambiguous links are refused before anything is written. At most 128 links. shared_branch=false inserts one reroute per listed link. shared_branch=true inserts one reroute per distinct source socket and fans it out to every listed target of that source, which is how a single output feeding several inputs is collected into one branch anchor; links from DIFFERENT sources into the same multi-input socket still get independent reroutes and never merge. points optionally gives one [x, y] canvas position per created reroute (the count must match exactly); without points each reroute lands on the midpoint between its source and its target node. The operation saves the target links, the full multi-input order and the node positions first, verifies afterwards that the resolved data flow and the multi-input order are unchanged, tags the group and its users for re-evaluation, and rolls the whole edit back on any failure (reported as rolled_back). Reroutes are canvas anchors: they reduce crossings and long wires, they do not make wiring orthogonal.",
+    "inputSchema": {
+      "$defs": {
+        "ExistingLink": {
+          "additionalProperties": false,
+          "properties": {
+            "from_node": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "From Node",
+              "type": "string"
+            },
+            "from_socket": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "From Socket",
+              "type": "string"
+            },
+            "to_node": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "To Node",
+              "type": "string"
+            },
+            "to_socket": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "To Socket",
+              "type": "string"
+            },
+            "multi_input_sort_id": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Multi Input Sort Id"
+            }
+          },
+          "required": [
+            "from_node",
+            "from_socket",
+            "to_node",
+            "to_socket"
+          ],
+          "title": "ExistingLink",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/ExistingLink"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Links",
+          "type": "array"
+        },
+        "points": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Points"
+        },
+        "shared_branch": {
+          "default": false,
+          "title": "Shared Branch",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "links"
+      ],
+      "title": "blender_geometry_nodes_reroute_insertArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_reroute_move": {
+    "name": "blender_geometry_nodes_reroute_move",
+    "description": "Move explicitly named NodeReroute nodes of one exact GeometryNodeTree. Any name that is not an existing reroute is refused with wrong_node_type, so this can never move a real node by accident. List of {'node': exact node name, 'x': number, 'y': number}. With absolute=false (the default) the values are the node's canvas-local location, exactly like the location field reported by blender_geometry_nodes_layout; with absolute=true they are canvas coordinates and the parent Frame offset is subtracted for you. Duplicate, unknown or non-finite entries are refused before anything is written, and nothing outside this list is moved. Fails atomic: the original reroute locations are restored and the call is reported as an error when anything goes wrong.",
+    "inputSchema": {
+      "$defs": {
+        "NodePosition": {
+          "additionalProperties": false,
+          "properties": {
+            "node": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Node",
+              "type": "string"
+            },
+            "x": {
+              "maximum": 1000000.0,
+              "minimum": -1000000.0,
+              "title": "X",
+              "type": "number"
+            },
+            "y": {
+              "maximum": 1000000.0,
+              "minimum": -1000000.0,
+              "title": "Y",
+              "type": "number"
+            }
+          },
+          "required": [
+            "node",
+            "x",
+            "y"
+          ],
+          "title": "NodePosition",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/NodePosition"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Positions",
+          "type": "array"
+        },
+        "absolute": {
+          "default": false,
+          "title": "Absolute",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "positions"
+      ],
+      "title": "blender_geometry_nodes_reroute_moveArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_reroute_delete": {
+    "name": "blender_geometry_nodes_reroute_delete",
+    "description": "Delete explicitly named NodeReroute nodes and reconnect what fed them to every downstream target, so no wire is lost and no socket changes. Reroute chains are handled transitively (deleting R1 and R2 of R1 -> R2 -> target reconnects R1's source to that target), branches keep all of their targets, and each affected multi-input socket keeps its exact link order. A reroute with no input link is refused (reroute_input_missing) instead of being removed silently, and a delete that would need the same source twice in one multi-input socket is refused (delete_would_merge_sources) rather than merging two independent sources. Every edit is re-verified against the resolved data flow and rolled back on failure.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Nodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "group",
+        "nodes"
+      ],
+      "title": "blender_geometry_nodes_reroute_deleteArguments",
+      "type": "object"
+    }
+  },
+  "blender_geometry_nodes_capture_editor": {
+    "name": "blender_geometry_nodes_capture_editor",
+    "description": "Screenshot the REAL Geometry Nodes editor area showing an exact node group and return it as MCP image content (image/png from the native window framebuffer), together with the full machine-readable node layout (node coordinates, parent Frames, links with endpoints and multi-input order, Reroutes, interface) read after the confirmed draw. fit='KEEP' (default) changes no view state; fit='ALL' frames the whole tree; fit='SELECTED' frames 'nodes' (or the editors' current selection) and reports hidden/collapsed members it cannot frame. include_sidebar controls the editor's N-panel. window_index/area_index pin the exact window and area; if the requested area is not a Geometry Nodes editor it is reconfigured temporarily and restored - area type, node tree/pin/path, sidebar, view, selection and window scene - also when the capture fails. The image is the whole editor area (no cropping): 'nodes' only affects the fit and the reported bounds. The request is verified at draw time, so a stale frame, a Shader tree or an empty editor is a structured error, never a wrong image. The PNG is published atomically under <workspace>/Project/previews/*.png.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        },
+        "window_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Index"
+        },
+        "area_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Index"
+        },
+        "fit": {
+          "default": "KEEP",
+          "enum": [
+            "KEEP",
+            "ALL",
+            "SELECTED"
+          ],
+          "title": "Fit",
+          "type": "string"
+        },
+        "nodes": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 512,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nodes"
+        },
+        "include_sidebar": {
+          "default": true,
+          "title": "Include Sidebar",
+          "type": "boolean"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group"
+      ],
+      "title": "blender_geometry_nodes_capture_editorArguments",
+      "type": "object"
+    }
+  },
+  "blender_create_mesh_object": {
+    "name": "blender_create_mesh_object",
+    "description": "Create a mesh object from explicit vertex/face data (no operators, no interactive context). Faces must reference valid vertex indices; n-gons are allowed. Use this when you need exactly controlled topology - for example a mesh that will receive shape keys. The object is linked into the ACTIVE scene's own collection hierarchy only: a 'collection' that belongs to another scene is refused (collection_outside_scene) and so is one that is shared with another scene (collection_shared_across_scenes), so case work cannot modify pre-existing scenes.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "vertices": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "Vertices",
+          "type": "array"
+        },
+        "faces": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Faces"
+        },
+        "edges": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Edges"
+        },
+        "collection": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        }
+      },
+      "required": [
+        "name",
+        "vertices"
+      ],
+      "title": "blender_create_mesh_objectArguments",
+      "type": "object"
+    }
+  },
+  "blender_create_primitive": {
+    "name": "blender_create_primitive",
+    "description": "Create a primitive mesh object through Blender's own operators: cube, plane, uv_sphere, ico_sphere, cylinder, cone, torus, grid, monkey. Note that operator primitives give you their own topology; if you later need shape keys, the key data must match that topology.",
+    "inputSchema": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "cube",
+            "plane",
+            "uv_sphere",
+            "ico_sphere",
+            "cylinder",
+            "cone",
+            "torus",
+            "grid",
+            "monkey"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
+        "rotation": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rotation"
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scale"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        },
+        "radius": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Radius"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameters"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "blender_create_primitiveArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_custom_property": {
+    "name": "blender_set_custom_property",
+    "description": "Set, read back or remove an ID custom property on an object or the scene. Custom properties are the intended driver inputs: create one (e.g. phase = 0.0), then point a driver variable at the path '[\"phase\"]'. Lists are stored as float arrays (handy for vectors).",
+    "inputSchema": {
+      "properties": {
+        "owner_kind": {
+          "default": "object",
+          "enum": [
+            "object",
+            "scene"
+          ],
+          "title": "Owner Kind",
+          "type": "string"
+        },
+        "key": {
+          "default": "",
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Name"
+        },
+        "remove": {
+          "default": false,
+          "title": "Remove",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_set_custom_propertyArguments",
+      "type": "object"
+    }
+  },
+  "blender_capture_preview": {
+    "name": "blender_capture_preview",
+    "description": "Render the current model and return the IMAGE ITSELF as MCP image content (base64 PNG the caller can look at), plus JSON metadata: the real saved path under <workspace>/Project/previews, the mode that was actually used, the pixel size, byte size and diagnostics. mode='auto' picks the real 3D viewport when a GUI Blender is running and otherwise renders through a temporary camera framed on the EVALUATED model bounds (so Geometry Nodes output is what you see); mode='viewport' insists on the GUI viewport and fails with an actionable error in --background; mode='render' always uses a camera render. view presets: current, isometric, front, top, back, right. Sizes are bounded to <=2048 px and the PNG to <=3 MiB. Render settings, the scene camera, the frame and all temporary datablocks are restored even on failure, and the .blend is never saved automatically.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "mode": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "viewport",
+            "render"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "view": {
+          "default": "isometric",
+          "enum": [
+            "current",
+            "isometric",
+            "front",
+            "top",
+            "back",
+            "right"
+          ],
+          "title": "View",
+          "type": "string"
+        },
+        "width": {
+          "default": 1280,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "default": 720,
+          "title": "Height",
+          "type": "integer"
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        },
+        "timeout": {
+          "default": 45.0,
+          "title": "Timeout",
+          "type": "number"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "transparent": {
+          "default": false,
+          "title": "Transparent",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_capture_previewArguments",
+      "type": "object"
+    }
+  },
+  "blender_present_object": {
+    "name": "blender_present_object",
+    "description": "Select and frame an object in the GUI 3D viewport, optionally isolate it in local view and request foreground activation of THIS Blender window. Unlike capture_preview this intentionally keeps the new view and selection; no geometry is changed. No desktop input automation.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "view": {
+          "default": "isometric",
+          "enum": [
+            "current",
+            "isometric",
+            "front",
+            "back",
+            "right",
+            "top"
+          ],
+          "title": "View",
+          "type": "string"
+        },
+        "isolate": {
+          "default": true,
+          "title": "Isolate",
+          "type": "boolean"
+        },
+        "foreground": {
+          "default": false,
+          "title": "Foreground",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "title": "blender_present_objectArguments",
+      "type": "object"
+    }
+  },
+  "blender_inspect_shape_keys": {
+    "name": "blender_inspect_shape_keys",
+    "description": "Shape key inventory of a mesh object: Basis and every key with index, influence value, mute state, slider range, relative key and vertex count, plus the mesh vertex count, a topology_consistent flag and the modifier list. Check topology_consistent (and whether a Geometry Nodes modifier is present) before editing any key.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "title": "blender_inspect_shape_keysArguments",
+      "type": "object"
+    }
+  },
+  "blender_create_shape_key": {
+    "name": "blender_create_shape_key",
+    "description": "Create a shape key on a mesh object. Blender creates the 'Basis' key automatically the first time, and every new key starts as a copy of the current base mesh. Optional slider_min/max set the influence range. The mesh topology is validated first; an object with an empty mesh, or key blocks whose vertex count no longer matches the mesh, is rejected instead of corrupted.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "default": 0.0,
+          "title": "Value",
+          "type": "number"
+        },
+        "from_mix": {
+          "default": false,
+          "title": "From Mix",
+          "type": "boolean"
+        },
+        "slider_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slider Min"
+        },
+        "slider_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slider Max"
+        },
+        "set_active": {
+          "default": false,
+          "title": "Set Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "name"
+      ],
+      "title": "blender_create_shape_keyArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_shape_key_coordinates": {
+    "name": "blender_set_shape_key_coordinates",
+    "description": "Write shape key geometry. Provide EITHER 'coordinates' (absolute local [x, y, z] per vertex) OR 'deltas' (added to the current values). Without 'indices' the list must have exactly one entry per vertex, otherwise the call fails with a topology_mismatch error naming both counts - the vertex count of a key cannot be changed. Use 'indices' to touch a subset. 'Basis' is write-protected unless allow_basis=true.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "key_name": {
+          "title": "Key Name",
+          "type": "string"
+        },
+        "coordinates": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coordinates"
+        },
+        "deltas": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deltas"
+        },
+        "indices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Indices"
+        },
+        "allow_basis": {
+          "default": false,
+          "title": "Allow Basis",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "key_name"
+      ],
+      "title": "blender_set_shape_key_coordinatesArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_shape_key": {
+    "name": "blender_set_shape_key",
+    "description": "Set a shape key's influence value (and optionally mute or the slider range), then return the re-evaluated mesh statistics and signature. Shape key influence is applied when the dependency graph evaluates, so the returned evaluated bounds are the real result of the change. clamp_to_slider=true keeps the value inside the slider range instead of exceeding it.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "key_name": {
+          "title": "Key Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "mute": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mute"
+        },
+        "slider_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slider Min"
+        },
+        "slider_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slider Max"
+        },
+        "clamp_to_slider": {
+          "default": false,
+          "title": "Clamp To Slider",
+          "type": "boolean"
+        },
+        "set_active": {
+          "default": false,
+          "title": "Set Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "key_name"
+      ],
+      "title": "blender_set_shape_keyArguments",
+      "type": "object"
+    }
+  },
+  "blender_remove_shape_key": {
+    "name": "blender_remove_shape_key",
+    "description": "Remove one shape key by name and report the remaining keys. The last remaining key and the 'Basis' key are protected; removing them is refused so the mesh cannot be left in an inconsistent state.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "key_name": {
+          "title": "Key Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "object",
+        "key_name"
+      ],
+      "title": "blender_remove_shape_keyArguments",
+      "type": "object"
+    }
+  },
+  "blender_inspect_drivers": {
+    "name": "blender_inspect_drivers",
+    "description": "List every driver on an owner: data path, array index, mute flag, driver type, expression, is_valid, keyframe count and, per variable, its name, type and targets (id_type, resolved id_name, data_path, transform type/space, bone). owner_kind='object' uses owner_name as the object; 'shape_keys' uses owner_name as the object whose Key datablock is driven; 'node_group' uses owner_name as the node tree (e.g. an input socket default); 'scene' takes an optional scene name.",
+    "inputSchema": {
+      "properties": {
+        "owner_kind": {
+          "enum": [
+            "object",
+            "shape_keys",
+            "node_group",
+            "scene"
+          ],
+          "title": "Owner Kind",
+          "type": "string"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Name"
+        }
+      },
+      "required": [
+        "owner_kind"
+      ],
+      "title": "blender_inspect_driversArguments",
+      "type": "object"
+    }
+  },
+  "blender_add_driver": {
+    "name": "blender_add_driver",
+    "description": "Add an expression driver. data_path is an RNA path on the owner, e.g. 'rotation_euler' with index=2, '[\"phase\"]' for a custom property, or 'key_blocks[\"Bulge\"].value' on owner_kind='shape_keys'; on owner_kind='node_group' use e.g. 'nodes[\"XForm\"].inputs[\"Translation\"].default_value' with index=0. Every path is resolved with ID.path_resolve first. Variables are validated structurally: SINGLE_PROP targets need id_type/id_name and a resolvable data_path; TRANSFORMS targets need an OBJECT and a transform_type. The expression is checked against the declared variable names and a small function whitelist (no Python statements, no __dunder, no import/eval/exec), then the dependency graph is updated so the returned evaluated_value is real. An existing driver at the same path/index is an error unless replace=true",
+    "inputSchema": {
+      "$defs": {
+        "DriverTargetSpec": {
+          "additionalProperties": false,
+          "description": "One driver variable target (``DriverTarget`` RNA).",
+          "properties": {
+            "id_type": {
+              "default": "OBJECT",
+              "description": "Target ID type: OBJECT, SCENE, KEY, MESH, NODETREE, MATERIAL, COLLECTION, ...",
+              "title": "Id Type",
+              "type": "string"
+            },
+            "id_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Datablock name inside that ID type (e.g. the object name). Required for all but SCENE.",
+              "title": "Id Name"
+            },
+            "data_path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "SINGLE_PROP only: an RNA path on the target ID, validated with ID.path_resolve, e.g. '[\"phase\"]' for a custom property or 'location'.",
+              "title": "Data Path"
+            },
+            "transform_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "TRANSFORMS only: LOC_X, LOC_Y, LOC_Z, ROT_X, ROT_Y, ROT_Z, SCALE_X, ...",
+              "title": "Transform Type"
+            },
+            "transform_space": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "WORLD_SPACE",
+              "description": "TRANSFORMS only: WORLD_SPACE or LOCAL_SPACE.",
+              "title": "Transform Space"
+            },
+            "bone_target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "TRANSFORMS only: optional bone name.",
+              "title": "Bone Target"
+            }
+          },
+          "title": "DriverTargetSpec",
+          "type": "object"
+        },
+        "DriverVariableSpec": {
+          "additionalProperties": false,
+          "description": "One driver variable, with its targets.",
+          "properties": {
+            "name": {
+              "description": "Variable name used inside the driver expression.",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "default": "SINGLE_PROP",
+              "enum": [
+                "SINGLE_PROP",
+                "TRANSFORMS"
+              ],
+              "title": "Type",
+              "type": "string"
+            },
+            "targets": {
+              "description": "At least one target; TRANSFORMS uses exactly one.",
+              "items": {
+                "$ref": "#/$defs/DriverTargetSpec"
+              },
+              "title": "Targets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "DriverVariableSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "owner_kind": {
+          "enum": [
+            "object",
+            "shape_keys",
+            "node_group",
+            "scene"
+          ],
+          "title": "Owner Kind",
+          "type": "string"
+        },
+        "data_path": {
+          "title": "Data Path",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Name"
+        },
+        "index": {
+          "default": -1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "variables": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DriverVariableSpec"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variables"
+        },
+        "replace": {
+          "default": false,
+          "title": "Replace",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "owner_kind",
+        "data_path",
+        "expression"
+      ],
+      "title": "blender_add_driverArguments",
+      "type": "object"
+    }
+  },
+  "blender_update_driver": {
+    "name": "blender_update_driver",
+    "description": "Update an existing driver's expression and/or variables, or mute it. Variables already on the driver are replaced when you pass 'variables' (set replace_variables=true to be explicit about it). Other F-Curves and other drivers are untouched.",
+    "inputSchema": {
+      "$defs": {
+        "DriverTargetSpec": {
+          "additionalProperties": false,
+          "description": "One driver variable target (``DriverTarget`` RNA).",
+          "properties": {
+            "id_type": {
+              "default": "OBJECT",
+              "description": "Target ID type: OBJECT, SCENE, KEY, MESH, NODETREE, MATERIAL, COLLECTION, ...",
+              "title": "Id Type",
+              "type": "string"
+            },
+            "id_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Datablock name inside that ID type (e.g. the object name). Required for all but SCENE.",
+              "title": "Id Name"
+            },
+            "data_path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "SINGLE_PROP only: an RNA path on the target ID, validated with ID.path_resolve, e.g. '[\"phase\"]' for a custom property or 'location'.",
+              "title": "Data Path"
+            },
+            "transform_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "TRANSFORMS only: LOC_X, LOC_Y, LOC_Z, ROT_X, ROT_Y, ROT_Z, SCALE_X, ...",
+              "title": "Transform Type"
+            },
+            "transform_space": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "WORLD_SPACE",
+              "description": "TRANSFORMS only: WORLD_SPACE or LOCAL_SPACE.",
+              "title": "Transform Space"
+            },
+            "bone_target": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "TRANSFORMS only: optional bone name.",
+              "title": "Bone Target"
+            }
+          },
+          "title": "DriverTargetSpec",
+          "type": "object"
+        },
+        "DriverVariableSpec": {
+          "additionalProperties": false,
+          "description": "One driver variable, with its targets.",
+          "properties": {
+            "name": {
+              "description": "Variable name used inside the driver expression.",
+              "title": "Name",
+              "type": "string"
+            },
+            "type": {
+              "default": "SINGLE_PROP",
+              "enum": [
+                "SINGLE_PROP",
+                "TRANSFORMS"
+              ],
+              "title": "Type",
+              "type": "string"
+            },
+            "targets": {
+              "description": "At least one target; TRANSFORMS uses exactly one.",
+              "items": {
+                "$ref": "#/$defs/DriverTargetSpec"
+              },
+              "title": "Targets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "title": "DriverVariableSpec",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "owner_kind": {
+          "enum": [
+            "object",
+            "shape_keys",
+            "node_group",
+            "scene"
+          ],
+          "title": "Owner Kind",
+          "type": "string"
+        },
+        "data_path": {
+          "title": "Data Path",
+          "type": "string"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Name"
+        },
+        "index": {
+          "default": -1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "expression": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expression"
+        },
+        "variables": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/DriverVariableSpec"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variables"
+        },
+        "replace_variables": {
+          "default": false,
+          "title": "Replace Variables",
+          "type": "boolean"
+        },
+        "mute": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mute"
+        }
+      },
+      "required": [
+        "owner_kind",
+        "data_path"
+      ],
+      "title": "blender_update_driverArguments",
+      "type": "object"
+    }
+  },
+  "blender_remove_driver": {
+    "name": "blender_remove_driver",
+    "description": "Remove the driver at one data path/index and report the remaining drivers on that owner. index=-1 removes every channel of the data path; pass an explicit index to remove a single channel. Removing a driver that does not exist is an error, not a silent no-op.",
+    "inputSchema": {
+      "properties": {
+        "owner_kind": {
+          "enum": [
+            "object",
+            "shape_keys",
+            "node_group",
+            "scene"
+          ],
+          "title": "Owner Kind",
+          "type": "string"
+        },
+        "data_path": {
+          "title": "Data Path",
+          "type": "string"
+        },
+        "owner_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Name"
+        },
+        "index": {
+          "default": -1,
+          "title": "Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "owner_kind",
+        "data_path"
+      ],
+      "title": "blender_remove_driverArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_create": {
+    "name": "blender_node_frame_create",
+    "description": "Create a native Frame in an exact node-group datablock. Existing Frame is reused unchanged. No annotation extension required.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "location": {
+          "default": [
+            0,
+            0
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Location",
+          "type": "array"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "label_size": {
+          "default": 24,
+          "title": "Label Size",
+          "type": "integer"
+        },
+        "shrink": {
+          "default": false,
+          "title": "Shrink",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "createArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_get": {
+    "name": "blender_node_frame_get",
+    "description": "Read native Frame label, layout, children, Text name/body/references. Exact group and frame names.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "getArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_parent": {
+    "name": "blender_node_frame_parent",
+    "description": "Atomically parent exact node names to a native Frame; preserve canvas positions, ports and links. Reject cycles. create_frame defaults false.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "create_frame": {
+          "default": false,
+          "title": "Create Frame",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "frame",
+        "nodes"
+      ],
+      "title": "parentArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_unparent": {
+    "name": "blender_node_frame_unparent",
+    "description": "Detach only requested direct children of this Frame; preserve canvas positions and all calculation links. Other parents skipped.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 512,
+          "minItems": 1,
+          "title": "Nodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "group",
+        "frame",
+        "nodes"
+      ],
+      "title": "unparentArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_update": {
+    "name": "blender_node_frame_update",
+    "description": "Set native Frame label/color/label_size(8..64)/shrink/width/height. Omitted properties preserved. No node graph rearrangement.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "label_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label Size"
+        },
+        "shrink": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shrink"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "updateArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_set_text": {
+    "name": "blender_node_frame_set_text",
+    "description": "Create/update stable internal Text for native Frame. User text requires overwrite=true; shared/external text refused. Empty body requires allow_empty=true and retains Text. Does not delete data.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 16384,
+          "title": "Body",
+          "type": "string"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        },
+        "allow_empty": {
+          "default": false,
+          "title": "Allow Empty",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "frame",
+        "body"
+      ],
+      "title": "set_textArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_frame_layout": {
+    "name": "blender_node_frame_layout",
+    "description": "Read nodes/Frames/parent relationships/canvas positions/labels/text/links of one exact group. Never auto-layouts.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group"
+      ],
+      "title": "layoutArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_status": {
+    "name": "blender_node_note_status",
+    "description": "Probe optional Mod node-notes extension inside Blender: version, source path, enabled state and RNA operators. Native Frame tools remain available when missing.",
+    "inputSchema": {
+      "properties": {},
+      "title": "statusArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_extension": {
+    "name": "blender_node_note_extension",
+    "description": "Enable/disable the fixed local node-notes extension repository under Mod, without copying source. persist=false by default; persistent preferences require a project-owned profile.",
+    "inputSchema": {
+      "properties": {
+        "enable": {
+          "default": true,
+          "title": "Enable",
+          "type": "boolean"
+        },
+        "persist": {
+          "default": false,
+          "title": "Persist",
+          "type": "boolean"
+        }
+      },
+      "title": "extensionArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_create": {
+    "name": "blender_node_note_create",
+    "description": "Create a managed native Frame annotation with its own internal Text in exact group. Reject name collisions; no ordinary Frames adopted.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "body": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Body",
+          "type": "string"
+        },
+        "location": {
+          "default": [
+            0,
+            0
+          ],
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Location",
+          "type": "array"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "createArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_get": {
+    "name": "blender_node_note_get",
+    "description": "Read one plugin-managed annotation Frame/Text. Plugin absent/disabled gives a structured dependency error.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "getArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_update": {
+    "name": "blender_node_note_update",
+    "description": "Noninteractive body/title update of a managed annotation. Keeps Text identity, refuses shared Text. Empty requires allow_empty=true.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "body": {
+          "maxLength": 16384,
+          "title": "Body",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "allow_empty": {
+          "default": false,
+          "title": "Allow Empty",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "frame",
+        "body"
+      ],
+      "title": "updateArguments",
+      "type": "object"
+    }
+  },
+  "blender_node_note_delete": {
+    "name": "blender_node_note_delete",
+    "description": "Delete only a plugin-managed annotation with confirm=true. Ordinary Frames protected. Text retained unless remove_text=true and sole ownership verified. Child canvas positions retained.",
+    "inputSchema": {
+      "properties": {
+        "group": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "frame": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Frame",
+          "type": "string"
+        },
+        "confirm": {
+          "default": false,
+          "title": "Confirm",
+          "type": "boolean"
+        },
+        "remove_text": {
+          "default": false,
+          "title": "Remove Text",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "group",
+        "frame"
+      ],
+      "title": "deleteArguments",
+      "type": "object"
+    }
+  },
+  "blender_set_frame": {
+    "name": "blender_set_frame",
+    "description": "Move the scene to a frame (this re-evaluates drivers and the dependency graph). Drivers only re-evaluate on frame changes or dependency-graph updates, so call this after editing driver variables or when a value must be sampled at a specific frame.",
+    "inputSchema": {
+      "properties": {
+        "frame": {
+          "title": "Frame",
+          "type": "integer"
+        },
+        "subframe": {
+          "default": 0.0,
+          "title": "Subframe",
+          "type": "number"
+        }
+      },
+      "required": [
+        "frame"
+      ],
+      "title": "blender_set_frameArguments",
+      "type": "object"
+    }
+  },
+  "blender_update_depsgraph": {
+    "name": "blender_update_depsgraph",
+    "description": "Force a dependency-graph update and report the current frame. Use it after direct datablock edits (custom properties, key coordinates) when you want evaluated results to reflect them.",
+    "inputSchema": {
+      "properties": {},
+      "title": "blender_update_depsgraphArguments",
+      "type": "object"
+    }
+  },
+  "blender_operation_log": {
+    "name": "blender_operation_log",
+    "description": "Read the persistent audit log of every MCP operation: each tool call with its sanitised parameters, outcome (ok / error / running / rolled_back), error code and message, duration in milliseconds, plus the Blender bridge command it produced and the per-step results of a batched graph edit (with the transaction verdict). Newest events come last. Filters: status, source ('mcp' or 'bridge') and a free-text query. Secrets are removed before they are written, and image payloads are stored as a size + hash - never as base64. The directory is fixed at <MCP>/.runtime/logs and cannot be chosen by the caller.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 50,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "ok",
+                "error",
+                "running",
+                "rolled_back",
+                "info"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "mcp",
+                "bridge"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query"
+        },
+        "include_details": {
+          "default": false,
+          "title": "Include Details",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_operation_logArguments",
+      "type": "object"
+    }
+  },
+  "blender_log_dashboard": {
+    "name": "blender_log_dashboard",
+    "description": "Start (hidden, in this process), inspect or stop the local live dashboard that shows every audited operation in real time - 成功 / 错误 / 进行中 / 已回滚 - with status filters, auto-scroll and expandable parameters. It is a read-only page served from Python's standard library on 127.0.0.1 only; there is no CDN dependency, no file access over HTTP and no token in the page. action='start' returns the URL to open; open_browser only opens it when explicitly set to true. action='status' reports a live viewer without starting one, action='stop' stops only a viewer this server process started.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "default": "start",
+          "enum": [
+            "start",
+            "status",
+            "stop"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "port": {
+          "default": 0,
+          "title": "Port",
+          "type": "integer"
+        },
+        "open_browser": {
+          "default": false,
+          "title": "Open Browser",
+          "type": "boolean"
+        },
+        "reuse": {
+          "default": true,
+          "title": "Reuse",
+          "type": "boolean"
+        }
+      },
+      "title": "blender_log_dashboardArguments",
+      "type": "object"
+    }
+  },
+  "blender_properties_list_parameters": {
+    "name": "blender_properties_list_parameters",
+    "title": "Properties: Geometry Nodes modifier parameters",
+    "description": "Enumerate the parameters a Geometry Nodes modifier exposes on ONE object - the same inputs the Properties > Modifier panel shows. Locate the modifier by exact object name and exact modifier name (modifier may be omitted only when the object has exactly one Geometry Nodes modifier; several are refused as ambiguous). For every interface input this returns the stable socket identifier, display name, socket type, the shared node-group interface default (marked default_is_shared=true), the current per-instance value, the declared min/max, subtype and unit, the hidden flags (hide_value / hide_in_modifier), whether the socket is linked inside the group, whether it is a field socket, the proven attribute-mode state with the raw IDPropertyGroup keys, the reliably discoverable enum items for menu sockets, any F-Curve driver that would overwrite a write, and whether this server may write it (writable / readonly_reason). Read-only: nothing in the scene, the node group or the file is modified.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "title": "blender_properties_list_parametersArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Properties: Geometry Nodes modifier parameters",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "properties",
+      "bridge_prefix": "properties_",
+      "mutating": false,
+      "idempotent": true,
+      "deletes_data": false,
+      "writes_shared_node_group_default": false
+    }
+  },
+  "blender_properties_get_parameter": {
+    "name": "blender_properties_get_parameter",
+    "title": "Properties: read one modifier parameter",
+    "description": "Read ONE Geometry Nodes modifier input of one object by its stable socket identifier (never by a localized display name, and never by guessing when names collide). Returns the current per-instance value, the shared interface default, the declared range, the subtype/unit, the hidden and link state, the proven attribute-mode state, the enum items of a menu socket and the writability verdict with its exact reason. Read-only.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "identifier": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Identifier",
+          "type": "string"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        }
+      },
+      "required": [
+        "object",
+        "identifier"
+      ],
+      "title": "blender_properties_get_parameterArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Properties: read one modifier parameter",
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "properties",
+      "bridge_prefix": "properties_",
+      "mutating": false,
+      "idempotent": true,
+      "deletes_data": false,
+      "writes_shared_node_group_default": false
+    }
+  },
+  "blender_properties_set_parameter": {
+    "name": "blender_properties_set_parameter",
+    "title": "Properties: set one modifier parameter",
+    "description": "Set ONE per-instance Geometry Nodes modifier input of one object and verify the write by reading it back. Only modifier.properties.inputs[identifier] of that modifier is written: the shared node group interface default and every other object's instance stay untouched. mode='VALUE' writes a number, bool, string, a 3 element vector/rotation or 4 element colour list, or a datablock reference {\"id_type\": \"OBJECT\", \"id_name\": \"Cube\"} (null clears a datablock input); values are checked against the socket type and its declared range before the write. mode='ATTRIBUTE' writes attribute_name AND the verified type selector; unsupported modes are refused. Menu integers are RNA enum values, never assumed to be positional indices; an identifier maps to its live value. Refused before writing: linked/overridden data (read_only_linked), an F-Curve driver on the input (read_only_driven), hidden inputs (hidden_input), geometry/bundle sockets (read_only_socket_type / unsupported_socket_type), menu values whose representation is unproven (unsupported_enum), unknown identifiers (input_not_found) and output sockets (not_an_input). After writing, the object is tagged and the dependency graph is re-evaluated; the response reports the parameter diff and the real evaluation state, or the exact step that failed instead of claiming a synchronous update.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "identifier": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Identifier",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        },
+        "mode": {
+          "default": "VALUE",
+          "enum": [
+            "VALUE",
+            "ATTRIBUTE"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "attribute_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attribute Name"
+        }
+      },
+      "required": [
+        "object",
+        "identifier"
+      ],
+      "title": "blender_properties_set_parameterArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Properties: set one modifier parameter",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "properties",
+      "bridge_prefix": "properties_",
+      "mutating": true,
+      "idempotent": false,
+      "deletes_data": false,
+      "writes_shared_node_group_default": false
+    }
+  },
+  "blender_properties_set_parameters": {
+    "name": "blender_properties_set_parameters",
+    "title": "Properties: set several modifier parameters atomically",
+    "description": "Set up to 128 per-instance Geometry Nodes modifier inputs of ONE object in a single call. The whole batch is pre-flighted first - every identifier, socket type, value, range, datablock reference, mode and writability - and only then written, so a refused batch leaves every value and mode exactly as it was (batch_precheck_failed lists every refused change with its own code). A repeated identifier in one batch is refused (duplicate_identifier). If a write or the read-back verification fails, every touched input is restored from a snapshot of all its keys and the error reports the failures, the restored keys and any key that could not be restored - a half-applied batch is never reported as a success. The response contains a structured before/after diff per input, the written keys, and the dependency-graph evaluation state after the writes.",
+    "inputSchema": {
+      "$defs": {
+        "ParameterChange": {
+          "additionalProperties": false,
+          "description": "One per-instance input change for ``blender_properties_set_parameters``.",
+          "properties": {
+            "identifier": {
+              "description": "Stable interface socket identifier from blender_properties_list_parameters, e.g. 'Socket_2'. Display names are never guessed into identifiers.",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Identifier",
+              "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "mode='VALUE': the new value - number, bool, string, a 3/4 element list for vector/colour/rotation, or {\"id_type\": ..., \"id_name\": ...} for a datablock input (null clears it). mode='ATTRIBUTE': ignored.",
+              "title": "Value"
+            },
+            "mode": {
+              "default": "VALUE",
+              "description": "VALUE selects the per-instance constant. ATTRIBUTE selects the input's named field; both modes require the live type selector enum when present.",
+              "enum": [
+                "VALUE",
+                "ATTRIBUTE"
+              ],
+              "title": "Mode",
+              "type": "string"
+            },
+            "attribute_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "mode='ATTRIBUTE' only: the attribute name to read, e.g. 'Position'.",
+              "title": "Attribute Name"
+            }
+          },
+          "required": [
+            "identifier"
+          ],
+          "title": "ParameterChange",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ParameterChange"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        }
+      },
+      "required": [
+        "object",
+        "changes"
+      ],
+      "title": "blender_properties_set_parametersArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "title": "Properties: set several modifier parameters atomically",
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "properties",
+      "bridge_prefix": "properties_",
+      "mutating": true,
+      "idempotent": false,
+      "deletes_data": false,
+      "writes_shared_node_group_default": false
+    }
+  },
+  "blender_properties_iterate_parameters": {
+    "name": "blender_properties_iterate_parameters",
+    "description": "Change up to 128 exact modifier instance inputs atomically, then return parameter diff, before/after evaluated model inspection and a REAL viewport screenshot as MCP image. Capture failure after a successful write is an error with parameters_committed=true; it does not pretend the write was rolled back. No scene save or shared defaults change.",
+    "inputSchema": {
+      "$defs": {
+        "ParameterChange": {
+          "additionalProperties": false,
+          "description": "One per-instance input change for ``blender_properties_set_parameters``.",
+          "properties": {
+            "identifier": {
+              "description": "Stable interface socket identifier from blender_properties_list_parameters, e.g. 'Socket_2'. Display names are never guessed into identifiers.",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Identifier",
+              "type": "string"
+            },
+            "value": {
+              "default": null,
+              "description": "mode='VALUE': the new value - number, bool, string, a 3/4 element list for vector/colour/rotation, or {\"id_type\": ..., \"id_name\": ...} for a datablock input (null clears it). mode='ATTRIBUTE': ignored.",
+              "title": "Value"
+            },
+            "mode": {
+              "default": "VALUE",
+              "description": "VALUE selects the per-instance constant. ATTRIBUTE selects the input's named field; both modes require the live type selector enum when present.",
+              "enum": [
+                "VALUE",
+                "ATTRIBUTE"
+              ],
+              "title": "Mode",
+              "type": "string"
+            },
+            "attribute_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "mode='ATTRIBUTE' only: the attribute name to read, e.g. 'Position'.",
+              "title": "Attribute Name"
+            }
+          },
+          "required": [
+            "identifier"
+          ],
+          "title": "ParameterChange",
+          "type": "object"
+        }
+      },
+      "properties": {
+        "object": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Object",
+          "type": "string"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ParameterChange"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        },
+        "scene": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene"
+        },
+        "window_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Index"
+        },
+        "area_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Index"
+        },
+        "fit": {
+          "default": true,
+          "title": "Fit",
+          "type": "boolean"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object",
+        "changes"
+      ],
+      "title": "blender_properties_iterate_parametersArguments",
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "domain": "properties"
+    }
+  },
+  "blender_model_inspection_inspect": {
+    "name": "blender_model_inspection_inspect",
+    "description": "Read-only evaluated-model inspection of ONE object in ONE exact scene. Evaluates the full modifier stack through that scene's own dependency graph (never the active scene's) and reports: evaluated geometry component types and counts (mesh vertices/edges/polygons/loops, curve splines/control points and their tessellation, point clouds), world-space bounds with their exact source, instance count/bounds, a comparable signature, the modifier stack, and explicit 'warnings'/'unknowns' for anything the Blender API could not prove. Nothing is applied or modified: the mesh data, modifier stack and transform are untouched, every temporary mesh is released with to_mesh_clear(), and the .blend is never saved. 'modifier' only selects which modifier's details are reported - a partial stack evaluation is not offered because Blender can only produce it by modifying the object.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "scene": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene"
+        },
+        "modifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modifier"
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "title": "blender_model_inspection_inspectArguments",
+      "type": "object"
+    }
+  },
+  "blender_model_inspection_capture_viewport": {
+    "name": "blender_model_inspection_capture_viewport",
+    "description": "Capture the REAL 3D viewport area of a running GUI Blender as MCP image content (image/png via the native window framebuffer) together with the evaluated summary of the captured object, the target scene, view/fit and size information. No camera render, no OpenGL still-render and no cached-file fallback: the capture is committed only after a real draw of the requested scene was observed, otherwise the call fails instead of returning a stale picture. window_index/area_index select the exact window and area; 'fit' frames the object (selection, active object, window scene and view are restored afterwards, also on failure). The PNG is published atomically under <workspace>/Project/previews/*.png (relative_path must be 'previews/<name>.png'; overwrite=true replaces an existing file). No mouse automation, no focus stealing, no .blend save.",
+    "inputSchema": {
+      "properties": {
+        "object": {
+          "title": "Object",
+          "type": "string"
+        },
+        "scene": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene"
+        },
+        "window_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Index"
+        },
+        "area_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Area Index"
+        },
+        "fit": {
+          "default": true,
+          "title": "Fit",
+          "type": "boolean"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        },
+        "overwrite": {
+          "default": false,
+          "title": "Overwrite",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object"
+      ],
+      "title": "blender_model_inspection_capture_viewportArguments",
+      "type": "object"
+    }
+  }
+}

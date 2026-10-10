@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from .. import config
 from ..bridge import BridgeClient, BridgeError
 from ._common import call
+from ._startup import probe_bridge
 
 
 def register(mcp: FastMCP, bridge: BridgeClient) -> None:
@@ -71,19 +72,8 @@ def register(mcp: FastMCP, bridge: BridgeClient) -> None:
         ),
     )
     def blender_bridge_probe() -> dict:
-        healthy, payload = bridge.is_healthy(timeout=3.0)
-        result = {
-            "reachable": healthy,
-            "address": bridge.address,
-            "token_present": config.token_path().exists(),
-        }
-        if healthy:
-            result["health"] = payload
-        else:
-            result["hint"] = (
-                "No healthy bridge answered. Launch Blender with blender_launch_blender, or run "
-                "MCP/blender/bootstrap.py inside an open Blender."
-            )
+        result = probe_bridge(bridge, timeout=3.0)
+        result["token_present"] = config.token_path().exists()
         return result
 
     _ = BridgeError  # imported for symmetry / documentation purposes

@@ -466,7 +466,7 @@ class McpFeatureTests(unittest.TestCase):
 
         cls.bridge = RecordingBridge({"health": {"audit_protocol": audit.ADDON_AUDIT_PROTOCOL,
                                                  "blender_version": "5.2.1 LTS"}})
-        cls.mcp = build_server(cls.bridge)
+        cls.mcp = build_server(cls.bridge, profile="all")
         cls.tools = {tool.name: tool for tool in asyncio.run(cls.mcp.list_tools())}
 
     def setUp(self):
@@ -564,7 +564,7 @@ class McpFeatureTests(unittest.TestCase):
         self.directory = fresh_dir("recovery_%s" % self._testMethodName)
         audit.configure(directory=self.directory, source="mcp", token="d" * 64)
         bridge = NotYetStartedBridge(failures=2)   # probe + the real call both fail
-        server = build_server(bridge)
+        server = build_server(bridge, profile="all")
 
         with self.assertRaises(Exception):
             asyncio.run(server.call_tool("blender_health", {}))

@@ -9,6 +9,7 @@ import sys
 from . import __version__, audit, config
 from .bridge import BridgeClient
 from .tools import build_server
+from .tool_profiles import ToolProfileError
 
 LOG = logging.getLogger("blender-mcp")
 
@@ -47,7 +48,16 @@ def main() -> int:
         audit=log.describe(),
     )
     bridge = BridgeClient()
-    mcp = build_server(bridge, name="blender")
+    try:
+        mcp = build_server(bridge, name="blender")
+    except ToolProfileError as exc:
+        LOG.error("tool_profile_configuration_error: %s", exc)
+        log.record("session_stop", reason="tool_profile_configuration_error", error=str(exc))
+        log.close()
+        bridge.close()
+        return 2
+    LOG.info("tool profile=%s | tools=%d", mcp.tool_profile.profile_name, mcp.tool_profile.kept_count)
+    log.record("tool_profile", **mcp.tool_profile.describe())
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:  # pragma: no cover - interactive Ctrl-C

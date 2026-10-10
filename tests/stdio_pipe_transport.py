@@ -70,6 +70,9 @@ async def _stdin_writer(process: subprocess.Popen, recv) -> None:
             await asyncio.to_thread(_write_all, process.stdin, (payload + "\n").encode("utf-8"))
     except (BrokenPipeError, ValueError):
         return
+    finally:
+        with anyio.CancelScope(shield=True):
+            await recv.aclose()
 
 
 def _terminate(process: subprocess.Popen, timeout: float = 10.0) -> dict:
@@ -102,6 +105,8 @@ async def mcp_stdio_session(
     env: dict | None = None,
     stderr_path: Path | None = None,
     cwd: Path | None = None,
+    message_handler=None,
+    initialization_callback=None,
 ):
     """Yield an initialised ``ClientSession`` talking to a real server process."""
     if os.environ.get("BLENDER_MCP_FORCE_SDK_STDIO") == "1":  # pragma: no cover - platform path
@@ -109,8 +114,10 @@ async def mcp_stdio_session(
 
         params = StdioServerParameters(command=str(command), args=list(args), env=env)
         async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
+            async with ClientSession(read, write, message_handler=message_handler) as session:
+                initialized = await session.initialize()
+                if initialization_callback:
+                    initialization_callback(initialized)
                 yield session, None
         return
 
@@ -139,8 +146,10 @@ async def mcp_stdio_session(
             task_group.start_soon(_stdout_reader, process, read_send)
             task_group.start_soon(_stdin_writer, process, write_recv)
             try:
-                async with ClientSession(read_recv, write_send) as session:
-                    await session.initialize()
+                async with ClientSession(read_recv, write_send, message_handler=message_handler) as session:
+                    initialized = await session.initialize()
+                    if initialization_callback:
+                        initialization_callback(initialized)
                     yield session, process
             finally:
                 await read_recv.aclose()
@@ -148,6 +157,11 @@ async def mcp_stdio_session(
                 task_group.cancel_scope.cancel()
     finally:
         teardown_info = _terminate(process)
+        # The server has exited, so no pipe reader can still wait on its output.
+        # Close our parent handles explicitly instead of relying on GC.
+        for handle in (process.stdin, process.stdout):
+            if handle is not None and not handle.closed:
+                handle.close()
         if stderr_path:
             stderr_handle.close()
     _LAST_TEARDOWN.clear()

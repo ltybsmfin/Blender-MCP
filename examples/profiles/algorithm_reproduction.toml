@@ -1,0 +1,10 @@
+# Initial documentation view only; all 93 tools stay registered and callable.
+# Query blender_tool_domains(domains=[...]) for interface docs; no refresh/reconnect.
+# Keep one service registration; avoid duplicates alongside the installed plugin.
+[mcp_servers.blender_algorithm_reproduction]
+command = 'D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe'
+args = ['D:\AI\MCP\Blender\MCP\server.py']
+
+[mcp_servers.blender_algorithm_reproduction.env]
+BLENDER_MCP_PROFILE = 'algorithm_reproduction'
+BLENDER_MCP_PORT = '9876'

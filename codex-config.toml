@@ -4,6 +4,8 @@ command = 'D:\AI\MCP\Blender\MCP\.venv\Scripts\python.exe'
 args = ['D:\AI\MCP\Blender\MCP\server.py']
 
 [mcp_servers.blender.env]
+# Legacy profile name selects the common documentation view; all 93 tools stay available.
+BLENDER_MCP_PROFILE = 'global-only'
 BLENDER_MCP_BLENDER = 'D:\AI\MCP\Blender\Version\5_2_1_LTS\blender.exe'
 BLENDER_MCP_PORT = '9876'
 BLENDER_MCP_TIMEOUT = '45'

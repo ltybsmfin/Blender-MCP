@@ -78,7 +78,7 @@ def register(mcp: FastMCP, bridge: BridgeClient) -> None:
             "create_node_group",
             {
                 "name": name,
-                "interface": [spec.model_dump() for spec in (interface or [])],
+                "interface": [spec.model_dump(exclude_unset=True) for spec in (interface or [])],
                 "with_input_output": with_input_output,
                 "geometry_output": geometry_output,
                 "if_exists": if_exists,
